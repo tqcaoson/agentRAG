@@ -2,6 +2,6 @@
 .env
 __pycache__/
 *.pyc
-//storage/
+storage/chroma_db
 .DS_Store
 /data/knowledge/uploads
