@@ -32,6 +32,12 @@ source .venv/bin/activate
 2. Cài dependencies.
 
 ```bash
+pip install --upgrade pip setuptools wheel packaging
+pip install --only-binary=:all: libcst
+pip install --only-binary=:all: pyarrow
+```
+
+```bash
 pip install -r requirements.txt
 ```
 
@@ -59,16 +65,8 @@ python src/ingest.py
 6. Chạy CLI hoặc Streamlit UI.
 
 ```bash
-python src/agent.py
-```
-
-```bash
+python src/agent.py &
 streamlit run src/app.py --server.address 0.0.0.0 --server.port 8501
-```
-
-```bash
-python3 -m streamlit run src/app.py --server.headless true --server.port 8501 --server.address 0.0.0.0
-2026-08-01 13:32:50.078 Uvicorn server started on 0.0.0.0:8501
 ```
 
 ## RAG setup
