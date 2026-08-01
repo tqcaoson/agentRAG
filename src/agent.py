@@ -7,6 +7,7 @@ try:
     from .tools import (
         create_project_report,
         create_weekly_plan,
+        generate_file_from_request,
         search_knowledge_tool,
         summarize_tasks,
     )
@@ -14,6 +15,7 @@ except ImportError:  # pragma: no cover - fallback for direct script execution
     from tools import (
         create_project_report,
         create_weekly_plan,
+        generate_file_from_request,
         search_knowledge_tool,
         summarize_tasks,
     )
@@ -21,6 +23,9 @@ except ImportError:  # pragma: no cover - fallback for direct script execution
 
 def simple_agent(user_request: str) -> str:
     req = user_request.lower()
+
+    if any(k in req for k in ["gen file", "generate file", "tạo file", "tao file"]):
+        return generate_file_from_request(user_request)
 
     if any(k in req for k in ["weekly", "week", "plan", "kế hoạch", "7 ngày"]):
         return create_weekly_plan()

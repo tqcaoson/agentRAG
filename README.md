@@ -66,6 +66,11 @@ python src/agent.py
 streamlit run src/app.py --server.address 0.0.0.0 --server.port 8501
 ```
 
+```bash
+python3 -m streamlit run src/app.py --server.headless true --server.port 8501 --server.address 0.0.0.0
+2026-08-01 13:32:50.078 Uvicorn server started on 0.0.0.0:8501
+```
+
 ## RAG setup
 
 Project hiện dùng:

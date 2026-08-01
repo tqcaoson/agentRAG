@@ -1,388 +1,727 @@
-import os
 import sys
-
-sys.path.insert(0, os.path.dirname(__file__))
+from pathlib import Path
 
 import streamlit as st
 
+
+# =========================
+# Path
+# =========================
+
+BASE_DIR = Path(__file__).resolve().parent
+
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+
+# =========================
+# Imports
+# =========================
+
 try:
     from src.agent import simple_agent
-except ImportError:  # pragma: no cover - fallback for direct script execution
+except ImportError:
     from agent import simple_agent
 
-st.set_page_config(page_title="Home RAG Assistant", layout="wide")
+
+try:
+    from src.ingest import DATA_DIR, ingest_file
+except ImportError:
+    from ingest import DATA_DIR, ingest_file
+
+
+try:
+    from src.tools import infer_generated_filename
+except ImportError:
+    from tools import infer_generated_filename
+
+
+
+# =========================
+# Streamlit config
+# =========================
+
+st.set_page_config(
+    page_title="Home RAG Assistant",
+    layout="wide"
+)
+
+
+# =========================
+# CSS
+# =========================
 
 st.markdown(
     """
-    <style>
-    #MainMenu, footer, header {
-        visibility: hidden;
-    }
+<style>
 
-    .stApp {
-        background: var(--background-color);
-        color: var(--text-color);
-    }
+#MainMenu, footer, header {
+    visibility:hidden;
+}
 
-    section[data-testid="stSidebar"] {
-        background: var(--secondary-background-color);
-        border-right: 1px solid color-mix(in srgb, var(--text-color) 12%, transparent);
-    }
 
-    section[data-testid="stSidebar"] .block-container {
-        padding-top: 1rem;
-        padding-bottom: 1rem;
-    }
+.hero {
+    padding:20px;
+    border-radius:20px;
+    border:1px solid rgba(120,120,120,.2);
+    margin-bottom:20px;
+}
 
-    div.block-container {
-        max-width: 1100px;
-        padding-top: 1.25rem;
-        padding-bottom: 5.5rem;
-    }
 
-    .hero-card {
-        display: flex;
-        justify-content: space-between;
-        gap: 1rem;
-        align-items: flex-start;
-        padding: 1.15rem 1.25rem;
-        margin-bottom: 1rem;
-        border-radius: 22px;
-        border: 1px solid color-mix(in srgb, var(--text-color) 10%, transparent);
-        background: color-mix(in srgb, var(--secondary-background-color) 72%, transparent);
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.04);
-    }
+.hero-title {
+    font-size:28px;
+    font-weight:700;
+}
 
-    .hero-title {
-        margin: 0;
-        font-size: 1.6rem;
-        line-height: 1.15;
-        font-weight: 650;
-        letter-spacing: -0.03em;
-    }
 
-    .hero-subtitle {
-        margin-top: 0.35rem;
-        margin-bottom: 0;
-        color: color-mix(in srgb, var(--text-color) 70%, transparent);
-        font-size: 0.96rem;
-        line-height: 1.5;
-    }
+.hero-sub {
+    opacity:.7;
+}
 
-    .hero-badge {
-        display: inline-flex;
-        align-items: center;
-        gap: 0.45rem;
-        padding: 0.42rem 0.7rem;
-        border-radius: 999px;
-        border: 1px solid color-mix(in srgb, var(--text-color) 10%, transparent);
-        background: color-mix(in srgb, var(--background-color) 78%, transparent);
-        font-size: 0.82rem;
-        white-space: nowrap;
-    }
 
-    .hero-meta {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 0.5rem;
-        justify-content: flex-end;
-    }
+.card {
+    padding:15px;
+    border-radius:16px;
+    border:1px solid rgba(120,120,120,.2);
+    margin-bottom:10px;
+}
 
-    .composer-wrap {
-        position: sticky;
-        bottom: 0;
-        z-index: 10;
-        padding-top: 0.8rem;
-        background: linear-gradient(
-            180deg,
-            color-mix(in srgb, var(--background-color) 0%, transparent),
-            var(--background-color) 28%
-        );
-    }
 
-    .composer-card {
-        border-radius: 22px;
-        border: 1px solid color-mix(in srgb, var(--text-color) 10%, transparent);
-        background: var(--background-color);
-        box-shadow: 0 14px 30px rgba(0, 0, 0, 0.06);
-        padding: 0.9rem 0.95rem 0.75rem;
-    }
+.history {
+    padding:12px;
+    border-radius:12px;
+    border:1px solid rgba(120,120,120,.15);
+    margin-bottom:8px;
+    font-size:14px;
+}
 
-    section[data-testid="stSidebar"] [data-testid="stButton"] > button,
-    .composer-card [data-testid="stButton"] > button,
-    .composer-card button[kind="primaryFormSubmit"] {
-        border-radius: 14px;
-        border: 1px solid color-mix(in srgb, var(--text-color) 10%, transparent);
-    }
 
-    section[data-testid="stSidebar"] [data-testid="stButton"] > button {
-        width: 100%;
-        justify-content: flex-start;
-    }
-
-    .sidebar-section-title {
-        margin: 1rem 0 0.5rem;
-        font-size: 0.78rem;
-        font-weight: 700;
-        letter-spacing: 0.08em;
-        text-transform: uppercase;
-        color: color-mix(in srgb, var(--text-color) 62%, transparent);
-    }
-
-    .sidebar-card {
-        border-radius: 18px;
-        border: 1px solid color-mix(in srgb, var(--text-color) 10%, transparent);
-        background: color-mix(in srgb, var(--background-color) 88%, transparent);
-        padding: 0.8rem 0.85rem;
-        margin-bottom: 0.6rem;
-    }
-
-    .sidebar-card-title {
-        font-size: 0.92rem;
-        font-weight: 650;
-        margin-bottom: 0.25rem;
-    }
-
-    .sidebar-card-text {
-        font-size: 0.84rem;
-        line-height: 1.45;
-        color: color-mix(in srgb, var(--text-color) 72%, transparent);
-    }
-
-    .history-card {
-        border-radius: 16px;
-        border: 1px solid color-mix(in srgb, var(--text-color) 10%, transparent);
-        background: color-mix(in srgb, var(--background-color) 90%, transparent);
-        padding: 0.75rem 0.8rem;
-        margin-bottom: 0.55rem;
-    }
-
-    .history-role {
-        font-size: 0.73rem;
-        font-weight: 700;
-        text-transform: uppercase;
-        letter-spacing: 0.08em;
-        color: color-mix(in srgb, var(--text-color) 55%, transparent);
-        margin-bottom: 0.25rem;
-    }
-
-    .history-preview {
-        font-size: 0.84rem;
-        line-height: 1.4;
-        color: var(--text-color);
-        overflow: hidden;
-        display: -webkit-box;
-        -webkit-line-clamp: 3;
-        -webkit-box-orient: vertical;
-    }
-
-    div[data-testid="stForm"] {
-        border: 0;
-        padding: 0;
-        background: transparent;
-    }
-
-    div[data-testid="stTextInput"] input {
-        border-radius: 14px;
-        min-height: 3rem;
-    }
-
-    div[data-testid="stTextInput"] label {
-        font-weight: 600;
-    }
-
-    .empty-state {
-        border-radius: 22px;
-        border: 1px dashed color-mix(in srgb, var(--text-color) 14%, transparent);
-        background: color-mix(in srgb, var(--secondary-background-color) 64%, transparent);
-        padding: 1.1rem 1.1rem 1rem;
-        margin: 0.75rem 0 1rem;
-    }
-
-    .empty-state h3 {
-        margin: 0 0 0.25rem;
-        font-size: 1rem;
-    }
-
-    .empty-state p {
-        margin: 0;
-        color: color-mix(in srgb, var(--text-color) 72%, transparent);
-        line-height: 1.5;
-    }
-    </style>
-    """,
+</style>
+""",
     unsafe_allow_html=True,
 )
 
-if "messages" not in st.session_state:
-    st.session_state.messages = []
 
-if "last_answer" not in st.session_state:
-    st.session_state.last_answer = ""
 
-if "last_prompt" not in st.session_state:
-    st.session_state.last_prompt = ""
+# =========================
+# Session State
+# =========================
 
-if "submit_error" not in st.session_state:
+defaults = {
+    "messages": [],
+    "last_answer": "",
+    "last_prompt": "",
+    "submit_error": "",
+    "composer_upload_nonce": 0,
+    "generated_file_name": "assistant_answer.md",
+    "show_download": False,
+}
+
+
+for key, value in defaults.items():
+    if key not in st.session_state:
+        st.session_state[key] = value
+
+
+
+# =========================
+# Helpers
+# =========================
+
+def get_composer_upload_key():
+    return (
+        f"composer_files_"
+        f"{st.session_state.composer_upload_nonce}"
+    )
+
+
+def set_prompt(text):
+
+    st.session_state.prompt_input = text
     st.session_state.submit_error = ""
 
 
-def format_preview(text: str, limit: int = 120) -> str:
-    cleaned = " ".join(text.split())
-    if len(cleaned) <= limit:
-        return cleaned
-    return cleaned[: limit - 1].rstrip() + "…"
+
+def format_preview(text, limit=120):
+
+    text = " ".join(text.split())
+
+    if len(text) <= limit:
+        return text
+
+    return text[:limit-1] + "..."
 
 
-def get_conversation_turns() -> list[dict[str, str]]:
-    turns = []
-    pending_user = ""
 
-    for message in st.session_state.messages:
-        if message["role"] == "user":
-            pending_user = message["content"]
-            continue
+def get_turns():
 
-        turns.append(
-            {
-                "user": pending_user,
-                "assistant": message["content"],
-            }
-        )
-        pending_user = ""
+    result = []
 
-    return turns
+    user = ""
+
+    for msg in st.session_state.messages:
+
+        if msg["role"] == "user":
+            user = msg["content"]
+
+        elif msg["role"] == "assistant":
+
+            result.append(
+                {
+                    "user": user,
+                    "assistant": msg["content"]
+                }
+            )
+
+            user = ""
+
+    return result
 
 
-def set_prompt(prompt_text: str) -> None:
-    st.session_state.prompt_input = prompt_text
-    st.session_state.submit_error = ""
+
+def is_file_request(text):
+
+    text = text.lower()
+
+    keywords = [
+        "gen file",
+        "generate file",
+        "tạo file",
+        "tao file"
+    ]
+
+    return any(k in text for k in keywords)
 
 
-def submit_prompt() -> None:
+
+# =========================
+# Submit
+# =========================
+
+def submit_prompt():
+
     user_input = st.session_state.prompt_input.strip()
 
+
     if not user_input:
-        st.session_state.submit_error = "Please type a prompt first."
+
+        st.session_state.submit_error = (
+            "Please type a prompt first."
+        )
+
         return
 
+
     st.session_state.submit_error = ""
+
     st.session_state.last_prompt = user_input
-    st.session_state.messages.append({"role": "user", "content": user_input})
+
+
+    st.session_state.messages.append(
+        {
+            "role":"user",
+            "content":user_input
+        }
+    )
+
+
+    # ingest attached files
+
+    upload_key = get_composer_upload_key()
+
+    uploaded = st.session_state.get(upload_key, [])
+
+
+    if uploaded:
+
+        upload_dir = DATA_DIR / "uploads"
+
+        upload_dir.mkdir(
+            parents=True,
+            exist_ok=True
+        )
+
+
+        for file in uploaded:
+
+            try:
+
+                dest = upload_dir / file.name
+
+                dest.write_bytes(
+                    file.getvalue()
+                )
+
+                ingest_file(dest)
+
+
+                st.session_state.messages.append(
+                    {
+                        "role":"system",
+                        "content":
+                        f"Ingested file: {file.name}"
+                    }
+                )
+
+
+            except Exception as exc:
+
+                st.session_state.messages.append(
+                    {
+                        "role":"system",
+                        "content":
+                        f"Error ingesting {file.name}: {exc}"
+                    }
+                )
+
+
+    st.session_state.composer_upload_nonce += 1
+
+
+
+    # agent
 
     with st.spinner("Thinking..."):
+
         try:
-            answer = simple_agent(user_input)
-        except Exception as exc:  # pragma: no cover - surfaced in UI
+
+            answer = simple_agent(
+                user_input
+            )
+
+
+        except Exception as exc:
+
             answer = f"Error: {exc}"
 
+
+
     st.session_state.last_answer = answer
-    st.session_state.messages.append({"role": "assistant", "content": answer})
+
+
+    st.session_state.generated_file_name = (
+        infer_generated_filename(
+            user_input
+        )
+    )
+
+
+    st.session_state.show_download = (
+        is_file_request(user_input)
+    )
+
+
+    st.session_state.messages.append(
+        {
+            "role":"assistant",
+            "content":answer
+        }
+    )
+
+
     st.session_state.prompt_input = ""
+# =========================
+# Sidebar
+# =========================
 
 with st.sidebar:
-    st.markdown("## Home RAG Assistant")
-    st.caption("Personal RAG workspace")
 
     st.markdown(
         """
-        <div class="sidebar-card">
-            <div class="sidebar-card-title">Workspace status</div>
-            <div class="sidebar-card-text">Local-first retrieval with ChromaDB and OpenAI generation.</div>
+        <div class="card">
+            <h3>Home RAG Assistant</h3>
+            <p>
+            Personal knowledge assistant
+            </p>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
-    st.markdown('<div class="sidebar-section-title">Quick prompts</div>', unsafe_allow_html=True)
-    if st.button("📋 Project summary"):
-        set_prompt("Tóm tắt project cá nhân hiện tại của tôi.")
-    if st.button("📚 Learning summary"):
-        set_prompt("Tóm tắt các note học tập hiện tại của tôi.")
-    if st.button("📅 Weekly plan"):
-        set_prompt("Tạo weekly plan 7 ngày cho tôi.")
-    if st.button("🗑️ Clear chat"):
+
+    st.markdown(
+        "### Quick prompts"
+    )
+
+
+    if st.button(
+        "📋 Project summary",
+        use_container_width=True
+    ):
+
+        set_prompt(
+            "Tóm tắt project cá nhân hiện tại của tôi."
+        )
+
+
+    if st.button(
+        "📚 Learning summary",
+        use_container_width=True
+    ):
+
+        set_prompt(
+            "Tóm tắt các note học tập hiện tại của tôi."
+        )
+
+
+    if st.button(
+        "📅 Weekly plan",
+        use_container_width=True
+    ):
+
+        set_prompt(
+            "Tạo weekly plan 7 ngày cho tôi."
+        )
+
+
+    if st.button(
+        "🗑 Clear chat",
+        use_container_width=True
+    ):
+
         st.session_state.messages = []
         st.session_state.last_answer = ""
         st.session_state.last_prompt = ""
-        st.session_state.prompt_input = ""
-        st.session_state.submit_error = ""
+        st.session_state.show_download = False
+
         st.rerun()
 
-    st.markdown('<div class="sidebar-section-title">Recent turns</div>', unsafe_allow_html=True)
-    turns = get_conversation_turns()
+
+
+    # =====================
+    # History
+    # =====================
+
+    st.markdown(
+        "### Recent turns"
+    )
+
+
+    turns = get_turns()
+
+
     if not turns:
-        st.markdown(
-            """
-            <div class="history-card">
-                <div class="history-role">History</div>
-                <div class="history-preview">No messages yet. Start with a prompt to build the thread here.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
+
+        st.caption(
+            "No conversation yet."
         )
+
+
     else:
-        for index, turn in enumerate(reversed(turns[-6:]), start=1):
-            user_preview = format_preview(turn["user"] or "No user prompt", 90)
-            assistant_preview = format_preview(turn["assistant"], 120)
+
+        for i, turn in enumerate(
+            reversed(turns[-5:]),
+            start=1
+        ):
+
             st.markdown(
                 f"""
-                <div class="history-card">
-                    <div class="history-role">Turn {index}</div>
-                    <div class="history-preview"><strong>User:</strong> {user_preview}</div>
-                    <div class="history-preview" style="margin-top: 0.35rem;"><strong>Assistant:</strong> {assistant_preview}</div>
+                <div class="history">
+
+                <b>Turn {i}</b>
+
+                <br><br>
+
+                <b>User:</b>
+                {format_preview(turn["user"],80)}
+
+                <br>
+
+                <b>Assistant:</b>
+                {format_preview(turn["assistant"],100)}
+
                 </div>
                 """,
-                unsafe_allow_html=True,
+                unsafe_allow_html=True
             )
+
+
+
+    # =====================
+    # Upload Knowledge
+    # =====================
+
+    st.markdown(
+        "### Add documents"
+    )
+
+
+    with st.expander(
+        "Upload files"
+    ):
+
+        files = st.file_uploader(
+            "Select files",
+            accept_multiple_files=True
+        )
+
+
+        if st.button(
+            "Upload & Ingest"
+        ):
+
+
+            if not files:
+
+                st.warning(
+                    "No files selected"
+                )
+
+
+            else:
+
+                upload_dir = DATA_DIR / "uploads"
+
+                upload_dir.mkdir(
+                    parents=True,
+                    exist_ok=True
+                )
+
+
+                for file in files:
+
+                    try:
+
+                        dest = (
+                            upload_dir /
+                            file.name
+                        )
+
+                        dest.write_bytes(
+                            file.getvalue()
+                        )
+
+
+                        ingest_file(
+                            dest
+                        )
+
+
+                        st.success(
+                            f"Ingested {file.name}"
+                        )
+
+
+                    except Exception as exc:
+
+                        st.error(
+                            str(exc)
+                        )
+
+
+
+    # =====================
+    # Create knowledge file
+    # =====================
+
+    with st.expander(
+        "Create knowledge file"
+    ):
+
+
+        try:
+
+            folders = [
+                p.name
+                for p in DATA_DIR.iterdir()
+                if p.is_dir()
+            ]
+
+        except Exception:
+
+            folders = []
+
+
+        folder = st.selectbox(
+            "Folder",
+            folders or ["uploads"]
+        )
+
+
+        filename = st.text_input(
+            "Filename",
+            placeholder="note.md"
+        )
+
+
+        content = st.text_area(
+            "Content",
+            height=150
+        )
+
+
+
+        if st.button(
+            "Create & Ingest"
+        ):
+
+
+            if not filename or not content:
+
+                st.warning(
+                    "Missing filename/content"
+                )
+
+
+            else:
+
+                target_dir = (
+                    DATA_DIR /
+                    folder
+                )
+
+
+                target_dir.mkdir(
+                    parents=True,
+                    exist_ok=True
+                )
+
+
+                dest = (
+                    target_dir /
+                    filename
+                )
+
+
+                dest.write_text(
+                    content,
+                    encoding="utf-8"
+                )
+
+
+                try:
+
+                    ingest_file(
+                        dest
+                    )
+
+                    st.success(
+                        f"Created {dest}"
+                    )
+
+
+                except Exception as exc:
+
+                    st.error(
+                        str(exc)
+                    )
+
+
+
+# =========================
+# Main UI
+# =========================
+
 
 st.markdown(
     """
-    <div class="hero-card">
-        <div>
-            <p class="hero-title">Home RAG Assistant</p>
-            <p class="hero-subtitle">Claude-like layout for personal project notes, learning notes, and task summaries. The color palette still follows the current light/dark Streamlit theme.</p>
-        </div>
-        <div class="hero-meta">
-            <div class="hero-badge">Local-first</div>
-            <div class="hero-badge">ChromaDB</div>
-            <div class="hero-badge">OpenAI</div>
-        </div>
+    <div class="hero">
+
+    <div class="hero-title">
+    Home RAG Assistant
+    </div>
+
+    <div class="hero-sub">
+    Personal project notes, learning notes,
+    tasks and document search.
+    </div>
+
     </div>
     """,
-    unsafe_allow_html=True,
+    unsafe_allow_html=True
 )
 
+
+
 if not st.session_state.messages:
-    st.markdown(
-        """
-        <div class="empty-state">
-            <h3>Start a conversation</h3>
-            <p>Try asking for a project summary, learning note recap, or a weekly plan. The input box below accepts Enter to send and clears after submission.</p>
-        </div>
-        """,
-        unsafe_allow_html=True,
+
+    st.info(
+        "Start conversation with your notes."
     )
 
-for msg in st.session_state.messages:
-    with st.chat_message(msg["role"]):
-        st.markdown(msg["content"])
 
-st.markdown('<div class="composer-wrap">', unsafe_allow_html=True)
-st.markdown('<div class="composer-card">', unsafe_allow_html=True)
-with st.form("prompt_form", clear_on_submit=False):
-    input_col, button_col = st.columns([0.86, 0.14], vertical_alignment="bottom")
-    with input_col:
-        st.text_input(
-            "Ask about your personal project, learning notes, or tasks...",
-            key="prompt_input",
-            label_visibility="collapsed",
-            placeholder="Ask about your personal project, learning notes, or tasks...",
+
+# Chat messages
+
+for msg in st.session_state.messages:
+
+
+    with st.chat_message(
+        msg["role"]
+    ):
+
+        st.markdown(
+            msg["content"]
         )
-    with button_col:
-        st.form_submit_button("Send", use_container_width=True, on_click=submit_prompt)
-st.markdown("</div>", unsafe_allow_html=True)
-st.markdown("</div>", unsafe_allow_html=True)
+
+
+
+# =========================
+# Composer
+# =========================
+
+with st.form(
+    "prompt_form",
+    clear_on_submit=False
+):
+
+
+    st.text_input(
+        "Prompt",
+        key="prompt_input",
+        placeholder=
+        "Ask about your project, notes..."
+    )
+
+
+    st.file_uploader(
+        "Attach files",
+        key=get_composer_upload_key(),
+        accept_multiple_files=True
+    )
+
+
+    st.form_submit_button(
+        "Send",
+        use_container_width=True,
+        on_click=submit_prompt
+    )
+
+
+
+# =========================
+# Download generated file
+# =========================
+
+
+if (
+    st.session_state.last_answer
+    and
+    st.session_state.show_download
+):
+
+
+    st.download_button(
+
+        label=
+        f"Download {st.session_state.generated_file_name}",
+
+        data=
+        st.session_state.last_answer,
+
+        file_name=
+        st.session_state.generated_file_name,
+
+        mime=
+        "text/markdown",
+
+        use_container_width=True
+    )
+
+
 
 if st.session_state.submit_error:
-    st.warning(st.session_state.submit_error)
+
+    st.warning(
+        st.session_state.submit_error
+    )

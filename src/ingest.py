@@ -122,6 +122,37 @@ def build_index(force: bool = False):
     return {"chunks": len(documents), "collection": CHROMA_COLLECTION, "path": str(CHROMA_PATH)}
 
 
+def ingest_file(path: Path) -> dict:
+    """Ingest a single file into the Chroma collection.
+
+    Returns a dict with number of chunks added and the collection name.
+    """
+    if not path.exists() or not path.is_file():
+        raise FileNotFoundError(f"File not found: {path}")
+
+    collection = get_collection()
+
+    source = str(path.relative_to(BASE_DIR)).replace(os.sep, "/")
+    text = load_text(path)
+    documents: list[str] = []
+    metadatas: list[dict[str, str]] = []
+    ids: list[str] = []
+
+    for chunk_index, chunk in enumerate(chunk_text(text)):
+        content_hash = hashlib.sha1(f"{source}:{chunk_index}:{chunk}".encode("utf-8")).hexdigest()
+        documents.append(chunk)
+        metadatas.append({"source": source, "chunk_index": str(chunk_index)})
+        ids.append(content_hash)
+
+    if not documents:
+        return {"chunks": 0, "collection": CHROMA_COLLECTION}
+
+    embeddings = embed_texts(documents)
+    collection.add(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
+
+    return {"chunks": len(documents), "collection": CHROMA_COLLECTION}
+
+
 if __name__ == "__main__":
     result = build_index(force=True)
     print(f"Indexed {result['chunks']} chunks into {result['collection']} at {result['path']}")

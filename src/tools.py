@@ -1,5 +1,6 @@
 import csv
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -16,6 +17,50 @@ TASKS_CSV = BASE_DIR / "data" / "knowledge" / "03_tasks" / "personal_tasks.csv"
 
 def search_knowledge_tool(query: str) -> str:
     return answer_query(query)
+
+
+def infer_generated_filename(prompt: str, default: str = "generated_answer.md") -> str:
+    normalized = " ".join(prompt.split()).strip()
+    if not normalized:
+        return default
+
+    patterns = [
+        r"(?:gen|generate|tạo|tao)\s+file\s+([^\n\r,.;:]+)",
+        r"(?:file)\s+([^\n\r,.;:]+)",
+    ]
+
+    filename = ""
+    for pattern in patterns:
+        match = re.search(pattern, normalized, flags=re.IGNORECASE)
+        if match:
+            filename = match.group(1).strip().split()[0].strip('"\'`')
+            break
+
+    if not filename:
+        return default
+
+    filename = re.sub(r"[\\/]+", "_", filename)
+    filename = re.sub(r"[^A-Za-z0-9._ -]+", "", filename).strip()
+    if not filename:
+        return default
+
+    if "." not in Path(filename).name:
+        filename = f"{filename}.md"
+
+    return filename
+
+
+def generate_file_from_request(user_request: str) -> str:
+    filename = infer_generated_filename(user_request)
+    title = Path(filename).stem.replace("_", " ").strip() or "Generated File"
+    lines = [
+        f"# {title}",
+        "",
+        "Generated from your request:",
+        f"- {user_request}",
+        "",
+    ]
+    return "\n".join(lines)
 
 
 def summarize_tasks(csv_path: str | None = None) -> str:

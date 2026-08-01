@@ -4,3 +4,4 @@ __pycache__/
 *.pyc
 //storage/
 .DS_Store
+/data/knowledge/uploads
