@@ -1,0 +1,78 @@
+[
+  {
+    "source": "data/knowledge/00_personal_project/project_overview.md",
+    "content": "# Personal Project: Habit Tracker App"
+  },
+  {
+    "source": "data/knowledge/00_personal_project/project_overview.md",
+    "content": "## Goal\nBuild a personal habit tracker app to help users track daily habits such as reading, exercise, language learning, and coding practice."
+  },
+  {
+    "source": "data/knowledge/00_personal_project/project_overview.md",
+    "content": "## Main Features\n- Create habit\n- Mark habit as done\n- View daily progress\n- View weekly progress\n- Export habit history\n- Basic notification reminder"
+  },
+  {
+    "source": "data/knowledge/00_personal_project/project_overview.md",
+    "content": "## Current Status\nThe project is in planning phase. MVP should focus on habit creation, daily tracking, and weekly summary."
+  },
+  {
+    "source": "data/knowledge/00_personal_project/project_overview.md",
+    "content": "## Risks\n- Scope creep\n- Inconsistent habit data model\n- UI complexity\n- Lack of notification implementation experience"
+  },
+  {
+    "source": "data/knowledge/00_personal_project/requirements.md",
+    "content": "# Habit Tracker Requirements"
+  },
+  {
+    "source": "data/knowledge/00_personal_project/requirements.md",
+    "content": "## FEAT-001: Create Habit\nUsers can create a habit with the following fields:\n- habit name\n- category\n- target frequency\n- start date\n- optional note"
+  },
+  {
+    "source": "data/knowledge/00_personal_project/requirements.md",
+    "content": "Acceptance Criteria:\n- User can create a new habit.\n- Habit name is required.\n- Category is optional.\n- Target frequency must be daily or weekly."
+  },
+  {
+    "source": "data/knowledge/00_personal_project/requirements.md",
+    "content": "## FEAT-002: Mark Habit As Done\nUsers can mark a habit as completed for a specific date."
+  },
+  {
+    "source": "data/knowledge/00_personal_project/requirements.md",
+    "content": "Acceptance Criteria:\n- User can mark today's habit as done.\n- User can undo completion.\n- System must avoid duplicate completion records for the same habit and date."
+  },
+  {
+    "source": "data/knowledge/01_learning/rag_learning_note.md",
+    "content": "# Learning Note: RAG"
+  },
+  {
+    "source": "data/knowledge/01_learning/rag_learning_note.md",
+    "content": "RAG means Retrieval-Augmented Generation."
+  },
+  {
+    "source": "data/knowledge/01_learning/rag_learning_note.md",
+    "content": "## Main Idea\n1. Split documents into chunks.\n2. Convert chunks into embeddings.\n3. Store embeddings in a vector database.\n4. When a question arrives, retrieve relevant chunks.\n5. Send retrieved context plus the question to an LLM.\n6. The LLM answers using the retrieved context."
+  },
+  {
+    "source": "data/knowledge/01_learning/rag_learning_note.md",
+    "content": "## Benefits\n- Can answer based on personal documents.\n- Reduces hallucination.\n- Useful for project knowledge bases.\n- Useful for study notes."
+  },
+  {
+    "source": "data/knowledge/02_notes/2026-08-01_daily_note.md",
+    "content": "# Daily Note - 2026-08-01"
+  },
+  {
+    "source": "data/knowledge/02_notes/2026-08-01_daily_note.md",
+    "content": "## Context\nLearning RAG and building a local assistant for personal use."
+  },
+  {
+    "source": "data/knowledge/02_notes/2026-08-01_daily_note.md",
+    "content": "## Facts\n- ChromaDB can run locally without cost.\n- Streamlit makes it easy to build a web UI quickly.\n- The project should stay focused on personal notes and tasks first."
+  },
+  {
+    "source": "data/knowledge/02_notes/2026-08-01_daily_note.md",
+    "content": "## Action Items\n- Build ingest script\n- Build simple agent router\n- Add quick prompts to the UI"
+  },
+  {
+    "source": "data/knowledge/03_tasks/personal_tasks.csv",
+    "content": "Key: TASK-001 | Summary: Setup local RAG environment | Status: Done | Priority: High | Area: AI\nKey: TASK-002 | Summary: Create habit tracker requirements | Status: In Progress | Priority: High | Area: Project\nKey: TASK-003 | Summary: Build Streamlit UI | Status: To Do | Priority: Medium | Area: AI\nKey: TASK-004 | Summary: Write weekly learning summary | Status: To Do | Priority: Medium | Area: Learning\nKey: TASK-005 | Summary: Review RAG evaluation questions | Status: To Do | Priority: Low | Area: AI"
+  }
+]

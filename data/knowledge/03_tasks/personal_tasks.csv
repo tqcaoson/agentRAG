@@ -1,0 +1,6 @@
+Key,Summary,Status,Priority,Area
+TASK-001,Setup local RAG environment,Done,High,AI
+TASK-002,Create habit tracker requirements,In Progress,High,Project
+TASK-003,Build Streamlit UI,To Do,Medium,AI
+TASK-004,Write weekly learning summary,To Do,Medium,Learning
+TASK-005,Review RAG evaluation questions,To Do,Low,AI
