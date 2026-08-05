@@ -47,7 +47,7 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Điền các biến cần thiết như `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, và `OPENAI_EMBEDDING_MODEL` nếu muốn override mặc định.
+Điền các biến cần thiết như `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_EMBEDDING_MODEL`, `OPENAI_IMAGE_MODEL`, và `OPENAI_IMAGE_QUALITY` nếu muốn override mặc định.
 
 4. Đưa tài liệu cá nhân vào `data/knowledge/`.
 
@@ -83,11 +83,17 @@ Các biến tuning tùy chọn nằm trong `.env.example`: `RAG_TOP_K`, `RAG_CAN
 
 Yêu cầu như `tạo file story.txt kể một câu chuyện...` hoặc `viết câu chuyện dạng txt...` sẽ sinh nội dung thực bằng AI và hiển thị nút download đúng loại file.
 
+- Chat ghi nhớ tối đa 10 user/assistant messages gần nhất trong cùng Streamlit session. Nút Clear chat xóa context này.
+- `tạo ảnh robot trong vườn` tạo, preview và cho tải file PNG.
+- `tạo file plan.xlsx gồm kế hoạch 7 ngày` tạo workbook Excel thật với dữ liệu do AI sinh.
+
 Sau khi thay đổi file trong `data/knowledge/`, hãy chạy lại:
 
 ```bash
 python src/ingest.py
 ```
+
+Không cần chạy ingest khi chỉ dùng chat memory, tạo ảnh hoặc tạo Excel. Lệnh này chỉ rebuild vector index từ source knowledge và cần API key hợp lệ.
 
 Sau đó mở lại query loop hoặc Streamlit app.
 

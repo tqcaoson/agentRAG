@@ -153,24 +153,55 @@ def format_context(contexts):
     return "\n\n---\n\n".join(parts)
 
 
-def generate_text(prompt: str, system_prompt: str, temperature: float = 0.4) -> str:
+def _trim_conversation(conversation_history, max_messages: int = 10, max_chars: int = 12000):
+    """Keep bounded user/assistant context for the current chat session."""
+    history = []
+    total_chars = 0
+    for message in reversed(conversation_history or []):
+        role = message.get("role")
+        content = message.get("content", "")
+        if role not in {"user", "assistant"} or not isinstance(content, str) or not content:
+            continue
+        if len(history) >= max_messages or total_chars + len(content) > max_chars:
+            break
+        history.append({"role": role, "content": content})
+        total_chars += len(content)
+    return list(reversed(history))
+
+
+def generate_text(
+    prompt: str,
+    system_prompt: str,
+    temperature: float = 0.4,
+    conversation_history=None,
+    response_format: dict | None = None,
+) -> str:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key or api_key == "your_openai_api_key_here":
         raise RuntimeError("OPENAI_API_KEY is missing. Set it in .env before asking the assistant.")
 
     client = OpenAI(api_key=api_key)
-    response = client.chat.completions.create(
-        model=DEFAULT_CHAT_MODEL,
-        temperature=temperature,
-        messages=[
+    request = {
+        "model": DEFAULT_CHAT_MODEL,
+        "temperature": temperature,
+        "messages": [
             {"role": "system", "content": system_prompt},
+            *_trim_conversation(conversation_history),
             {"role": "user", "content": prompt},
         ],
-    )
+    }
+    if response_format:
+        request["response_format"] = response_format
+    response = client.chat.completions.create(**request)
     return response.choices[0].message.content or ""
 
 
-def answer_query(query: str, system_prompt: str | None = None, top_k: int = DEFAULT_TOP_K):
+def answer_query(
+    query: str,
+    system_prompt: str | None = None,
+    top_k: int = DEFAULT_TOP_K,
+    conversation_history=None,
+):
     contexts = retrieve_context(query, top_k=top_k)
     context_text = format_context(contexts)
 
@@ -189,7 +220,12 @@ def answer_query(query: str, system_prompt: str | None = None, top_k: int = DEFA
             f"Question:\n{query}"
         )
 
-    return generate_text(user_message, system_message, temperature=0.2)
+    return generate_text(
+        user_message,
+        system_message,
+        temperature=0.2,
+        conversation_history=conversation_history,
+    )
 
 
 if __name__ == "__main__":

@@ -10,15 +10,16 @@ Một local-first personal RAG assistant có nhiệm vụ trả lời câu hỏi
 - Streamlit
 - ChromaDB
 - OpenAI API
+- openpyxl
 
 ## Luồng runtime chính
 
 1. User nhập prompt trong Streamlit.
 2. App lấy semantic candidates từ ChromaDB rồi hybrid-rerank bằng lexical relevance và MMR diversity.
 3. Context đã retrieve được gửi tới OpenAI chat completions.
-4. Answer được render trong app và lưu vào chat history.
+4. Answer được render và lưu vào session history; các lượt gần nhất trở thành context cho câu hỏi tiếp theo trong phiên.
 
-Với yêu cầu tạo file, app gọi OpenAI bằng prompt chuyên biệt theo extension (`txt`, `md`, `csv`, `json`, `html`) và cung cấp nội dung hoàn chỉnh qua nút download.
+Với yêu cầu tạo file, app gọi OpenAI bằng prompt chuyên biệt theo extension. Ảnh được tạo qua Images API và tải PNG; Excel được tạo từ AI structured JSON rồi dựng thành workbook XLSX bằng openpyxl.
 
 ## Nguồn dữ liệu
 

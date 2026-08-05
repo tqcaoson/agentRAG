@@ -4,7 +4,8 @@
 
 - `src/ingest.py` - đọc local knowledge files, chunk theo paragraph/sentence với heading context và overlap, embed, rồi upsert vào ChromaDB.
 - `src/query.py` - lấy semantic candidate pool từ ChromaDB, hybrid-rerank bằng semantic score + BM25 lexical score, áp dụng MMR để giảm context trùng lặp, rồi gửi context đã chọn tới OpenAI.
-- `src/tools.py` - các helper level cao cho summaries, weekly plans, project reports, và sinh nội dung file bằng AI theo đúng định dạng được yêu cầu.
+- `src/tools.py` - routing helper cho summaries, reports, text files và binary artifacts.
+- `src/artifacts.py` - gọi Images API và dựng workbook XLSX thật từ JSON có cấu trúc do AI sinh.
 - `src/agent.py` - simple router chọn tool cần gọi.
 - `src/app.py` - Streamlit UI cho chat và quick prompts.
 
@@ -31,6 +32,9 @@ flowchart TD
 
 - Sidebar quick prompts chỉ prefill input field.
 - Nút Send là trigger chạy assistant.
+- Các lượt user/assistant gần nhất được gửi lại cho model trong cùng Streamlit session; tối đa 10 messages hoặc 12.000 ký tự.
+- Clear chat xóa cả conversation context và generated artifact của session.
+- Ảnh được render/tải dạng PNG; Excel được tạo dạng XLSX với header style, filter, freeze panes và column widths.
 - Chat history hiển thị dưới dạng collapsed expanders.
 - File-generation request đi qua generation prompt riêng, không dùng template placeholder; download MIME được chọn theo extension.
 

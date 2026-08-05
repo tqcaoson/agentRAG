@@ -114,6 +114,9 @@ defaults = {
     "submit_error": "",
     "composer_upload_nonce": 0,
     "generated_file_name": "assistant_answer.md",
+    "generated_file_data": b"",
+    "generated_file_mime": "application/octet-stream",
+    "generated_file_is_image": False,
     "show_download": False,
 }
 
@@ -217,6 +220,7 @@ def submit_prompt():
 
     st.session_state.last_prompt = user_input
 
+    conversation_history = list(st.session_state.messages)
 
     st.session_state.messages.append(
         {
@@ -287,7 +291,8 @@ def submit_prompt():
         try:
 
             answer = simple_agent(
-                user_input
+                user_input,
+                conversation_history=conversation_history,
             )
 
 
@@ -297,19 +302,22 @@ def submit_prompt():
 
 
 
+    if hasattr(answer, "data") and hasattr(answer, "filename"):
+        artifact = answer
+        answer = artifact.preview
+        st.session_state.generated_file_name = artifact.filename
+        st.session_state.generated_file_data = artifact.data
+        st.session_state.generated_file_mime = artifact.mime_type
+        st.session_state.generated_file_is_image = artifact.mime_type.startswith("image/")
+        st.session_state.show_download = True
+    else:
+        st.session_state.generated_file_name = infer_generated_filename(user_input)
+        st.session_state.generated_file_data = answer
+        st.session_state.generated_file_mime = generated_file_mime(st.session_state.generated_file_name)
+        st.session_state.generated_file_is_image = False
+        st.session_state.show_download = is_file_request(user_input) and not answer.startswith("Error:")
+
     st.session_state.last_answer = answer
-
-
-    st.session_state.generated_file_name = (
-        infer_generated_filename(
-            user_input
-        )
-    )
-
-
-    st.session_state.show_download = (
-        is_file_request(user_input)
-    )
 
 
     st.session_state.messages.append(
@@ -383,6 +391,9 @@ with st.sidebar:
         st.session_state.messages = []
         st.session_state.last_answer = ""
         st.session_state.last_prompt = ""
+        st.session_state.generated_file_data = b""
+        st.session_state.generated_file_mime = "application/octet-stream"
+        st.session_state.generated_file_is_image = False
         st.session_state.show_download = False
 
         st.rerun()
@@ -702,20 +713,21 @@ if (
 ):
 
 
+    if st.session_state.generated_file_is_image:
+        st.image(st.session_state.generated_file_data, caption=st.session_state.generated_file_name)
+
     st.download_button(
 
         label=
         f"Download {st.session_state.generated_file_name}",
 
         data=
-        st.session_state.last_answer,
+        st.session_state.generated_file_data,
 
         file_name=
         st.session_state.generated_file_name,
 
-        mime=generated_file_mime(
-            st.session_state.generated_file_name
-        ),
+        mime=st.session_state.generated_file_mime,
 
         use_container_width=True
     )
