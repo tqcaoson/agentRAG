@@ -1,5 +1,8 @@
 import os
+import math
+import re
 import sys
+from collections import Counter
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -16,6 +19,9 @@ load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DEFAULT_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
+DEFAULT_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
+DEFAULT_CANDIDATE_K = int(os.getenv("RAG_CANDIDATE_K", "20"))
+DEFAULT_MMR_LAMBDA = float(os.getenv("RAG_MMR_LAMBDA", "0.75"))
 
 
 def ensure_index_ready():
@@ -24,12 +30,87 @@ def ensure_index_ready():
         build_index(force=True)
 
 
-def retrieve_context(query: str, top_k: int = 5):
+def _tokens(text: str) -> list[str]:
+    return re.findall(r"[\wÀ-ỹ]+", text.lower(), flags=re.UNICODE)
+
+
+def _lexical_scores(query: str, documents: list[str]) -> list[float]:
+    """BM25 scores over the semantic candidate pool."""
+    query_terms = Counter(_tokens(query))
+    tokenized = [_tokens(document) for document in documents]
+    if not query_terms or not tokenized:
+        return [0.0] * len(documents)
+
+    avg_length = sum(map(len, tokenized)) / max(len(tokenized), 1)
+    document_frequency = Counter()
+    for tokens in tokenized:
+        document_frequency.update(set(tokens) & query_terms.keys())
+
+    scores = []
+    for tokens in tokenized:
+        frequencies = Counter(tokens)
+        score = 0.0
+        for term, query_frequency in query_terms.items():
+            df = document_frequency[term]
+            idf = math.log(1 + (len(tokenized) - df + 0.5) / (df + 0.5))
+            tf = frequencies[term]
+            denominator = tf + 1.5 * (1 - 0.75 + 0.75 * len(tokens) / max(avg_length, 1))
+            score += query_frequency * idf * (tf * 2.5 / denominator if denominator else 0.0)
+        scores.append(score)
+    return scores
+
+
+def _normalize(values: list[float], reverse: bool = False) -> list[float]:
+    if not values:
+        return []
+    low, high = min(values), max(values)
+    if math.isclose(low, high):
+        return [1.0] * len(values)
+    else:
+        normalized = [(value - low) / (high - low) for value in values]
+    return [1.0 - value for value in normalized] if reverse else normalized
+
+
+def _jaccard_similarity(left: str, right: str) -> float:
+    left_tokens, right_tokens = set(_tokens(left)), set(_tokens(right))
+    union = left_tokens | right_tokens
+    return len(left_tokens & right_tokens) / len(union) if union else 0.0
+
+
+def _mmr_select(candidates: list[dict], top_k: int, mmr_lambda: float) -> list[dict]:
+    selected: list[dict] = []
+    remaining = list(candidates)
+    while remaining and len(selected) < top_k:
+        def mmr(candidate):
+            redundancy = max(
+                (_jaccard_similarity(candidate["content"], item["content"]) for item in selected),
+                default=0.0,
+            )
+            return mmr_lambda * candidate["relevance_score"] - (1 - mmr_lambda) * redundancy
+
+        best = max(remaining, key=mmr)
+        best["rerank_score"] = mmr(best)
+        selected.append(best)
+        remaining.remove(best)
+    return selected
+
+
+def retrieve_context(
+    query: str,
+    top_k: int = DEFAULT_TOP_K,
+    candidate_k: int = DEFAULT_CANDIDATE_K,
+    mmr_lambda: float = DEFAULT_MMR_LAMBDA,
+):
+    ensure_index_ready()
     collection = get_collection()
     query_embedding = embed_texts([query])[0]
+    available = collection.count()
+    candidate_count = min(available, max(top_k, candidate_k))
+    if candidate_count == 0:
+        return []
     result = collection.query(
         query_embeddings=[query_embedding],
-        n_results=top_k,
+        n_results=candidate_count,
         include=["documents", "metadatas", "distances"],
     )
 
@@ -37,17 +118,27 @@ def retrieve_context(query: str, top_k: int = 5):
     metadatas = result.get("metadatas", [[]])[0]
     distances = result.get("distances", [[]])[0]
 
+    lexical_scores = _lexical_scores(query, documents)
+    semantic_scores = _normalize(distances, reverse=True)
+    normalized_lexical = _normalize(lexical_scores)
+
     contexts = []
-    for document, metadata, distance in zip(documents, metadatas, distances):
+    for document, metadata, distance, semantic, lexical in zip(
+        documents, metadatas, distances, semantic_scores, normalized_lexical
+    ):
         contexts.append(
             {
                 "source": metadata.get("source", "unknown"),
                 "chunk_index": metadata.get("chunk_index", "0"),
                 "content": document,
                 "distance": distance,
+                "semantic_score": semantic,
+                "lexical_score": lexical,
+                "relevance_score": 0.7 * semantic + 0.3 * lexical,
             }
         )
-    return contexts
+    contexts.sort(key=lambda item: item["relevance_score"], reverse=True)
+    return _mmr_select(contexts, top_k=top_k, mmr_lambda=mmr_lambda)
 
 
 def format_context(contexts):
@@ -62,13 +153,24 @@ def format_context(contexts):
     return "\n\n---\n\n".join(parts)
 
 
-def answer_query(query: str, system_prompt: str | None = None, top_k: int = 5):
+def generate_text(prompt: str, system_prompt: str, temperature: float = 0.4) -> str:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key or api_key == "your_openai_api_key_here":
         raise RuntimeError("OPENAI_API_KEY is missing. Set it in .env before asking the assistant.")
 
     client = OpenAI(api_key=api_key)
-    ensure_index_ready()
+    response = client.chat.completions.create(
+        model=DEFAULT_CHAT_MODEL,
+        temperature=temperature,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": prompt},
+        ],
+    )
+    return response.choices[0].message.content or ""
+
+
+def answer_query(query: str, system_prompt: str | None = None, top_k: int = DEFAULT_TOP_K):
     contexts = retrieve_context(query, top_k=top_k)
     context_text = format_context(contexts)
 
@@ -87,16 +189,7 @@ def answer_query(query: str, system_prompt: str | None = None, top_k: int = 5):
             f"Question:\n{query}"
         )
 
-    response = client.chat.completions.create(
-        model=DEFAULT_CHAT_MODEL,
-        temperature=0.2,
-        messages=[
-            {"role": "system", "content": system_message},
-            {"role": "user", "content": user_message},
-        ],
-    )
-
-    return response.choices[0].message.content or ""
+    return generate_text(user_message, system_message, temperature=0.2)
 
 
 if __name__ == "__main__":

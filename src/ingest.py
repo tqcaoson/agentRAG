@@ -16,6 +16,8 @@ DEFAULT_CHROMA_PATH = BASE_DIR / "storage" / "chroma_db"
 CHROMA_PATH = Path(os.getenv("CHROMA_PATH", str(DEFAULT_CHROMA_PATH)))
 CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "home_knowledge")
 SUPPORTED_EXTENSIONS = {".md", ".txt", ".csv"}
+DEFAULT_CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "1200"))
+DEFAULT_CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "180"))
 
 
 def iter_files(root: Path):
@@ -36,7 +38,39 @@ def load_text(path: Path) -> str:
     return path.read_text(encoding="utf-8")
 
 
-def chunk_text(text: str, max_chars: int = 900):
+def _split_long_text(text: str, max_chars: int) -> list[str]:
+    """Split long text near sentence/word boundaries."""
+    pieces: list[str] = []
+    remaining = text.strip()
+    while len(remaining) > max_chars:
+        window = remaining[: max_chars + 1]
+        boundaries = [window.rfind(marker) for marker in ("\n", ". ", "! ", "? ", "; ", " ")]
+        split_at = max(boundaries)
+        if split_at < max_chars // 2:
+            split_at = max_chars
+        elif window[split_at : split_at + 2] in {". ", "! ", "? ", "; "}:
+            split_at += 1
+        pieces.append(remaining[:split_at].strip())
+        remaining = remaining[split_at:].strip()
+    if remaining:
+        pieces.append(remaining)
+    return pieces
+
+
+def _overlap_tail(text: str, overlap_chars: int) -> str:
+    if overlap_chars <= 0 or not text:
+        return ""
+    tail = text[-overlap_chars:]
+    first_space = tail.find(" ")
+    return tail[first_space + 1 :].strip() if first_space >= 0 else tail.strip()
+
+
+def chunk_text(
+    text: str,
+    max_chars: int = DEFAULT_CHUNK_SIZE,
+    overlap_chars: int = DEFAULT_CHUNK_OVERLAP,
+):
+    """Create paragraph-aware chunks with heading context and controlled overlap."""
     normalized = re.sub(r"\r\n?", "\n", text).strip()
     if not normalized:
         return []
@@ -44,23 +78,36 @@ def chunk_text(text: str, max_chars: int = 900):
     paragraphs = [part.strip() for part in re.split(r"\n\s*\n", normalized) if part.strip()]
     chunks: list[str] = []
     current = ""
+    current_heading = ""
 
     for paragraph in paragraphs or [normalized]:
-        if len(paragraph) > max_chars:
-            if current:
-                chunks.append(current.strip())
-                current = ""
-            for start in range(0, len(paragraph), max_chars):
-                chunks.append(paragraph[start : start + max_chars].strip())
-            continue
+        if paragraph.startswith("#"):
+            current_heading = paragraph.splitlines()[0].strip()
 
-        candidate = f"{current}\n\n{paragraph}" if current else paragraph
-        if len(candidate) > max_chars:
-            if current:
+        sections = _split_long_text(paragraph, max_chars)
+        for section in sections:
+            prefix = current_heading if current_heading and not section.startswith(current_heading) else ""
+            contextual_section = f"{prefix}\n\n{section}" if prefix else section
+            candidate = f"{current}\n\n{contextual_section}" if current else contextual_section
+            if len(candidate) <= max_chars:
+                current = candidate
+                continue
+
+            if current and current.strip() != prefix:
                 chunks.append(current.strip())
-            current = paragraph
-        else:
-            current = candidate
+            overlap = _overlap_tail(current, overlap_chars)
+            base_parts = [part for part in (prefix, section) if part]
+            base = "\n\n".join(dict.fromkeys(base_parts))
+            if len(base) > max_chars:
+                base = section
+            available_overlap = max_chars - len(base) - 2
+            if overlap and available_overlap > 20:
+                overlap = _overlap_tail(overlap, min(overlap_chars, available_overlap))
+                current = "\n\n".join(part for part in (prefix, overlap, section) if part)
+                if len(current) > max_chars:
+                    current = "\n\n".join(part for part in (overlap, section) if part)
+            else:
+                current = base
 
     if current:
         chunks.append(current.strip())
@@ -89,17 +136,6 @@ def get_collection():
 
 
 def build_index(force: bool = False):
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-    if force:
-        try:
-            client.delete_collection(name=CHROMA_COLLECTION)
-        except Exception:
-            pass
-
-    collection = client.get_or_create_collection(name=CHROMA_COLLECTION)
-    if force:
-        collection = client.get_or_create_collection(name=CHROMA_COLLECTION)
-
     documents: list[str] = []
     metadatas: list[dict[str, str]] = []
     ids: list[str] = []
@@ -116,8 +152,16 @@ def build_index(force: bool = False):
     if not documents:
         return {"chunks": 0, "collection": CHROMA_COLLECTION, "path": str(CHROMA_PATH)}
 
+    # Finish the external API operation before replacing a healthy local index.
     embeddings = embed_texts(documents)
-    collection.add(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
+    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
+    if force:
+        try:
+            client.delete_collection(name=CHROMA_COLLECTION)
+        except Exception:
+            pass
+    collection = client.get_or_create_collection(name=CHROMA_COLLECTION)
+    collection.upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
 
     return {"chunks": len(documents), "collection": CHROMA_COLLECTION, "path": str(CHROMA_PATH)}
 
@@ -148,7 +192,9 @@ def ingest_file(path: Path) -> dict:
         return {"chunks": 0, "collection": CHROMA_COLLECTION}
 
     embeddings = embed_texts(documents)
-    collection.add(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
+    # Replace all old chunks of this source so edits do not leave stale content behind.
+    collection.delete(where={"source": source})
+    collection.upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
 
     return {"chunks": len(documents), "collection": CHROMA_COLLECTION}
 

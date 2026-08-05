@@ -15,9 +15,13 @@
 - Sidebar quick prompts chỉ nên prefill prompt input.
 - Nút Send phải execute assistant.
 - History nên ở trạng thái collapsed cho tới khi mở ra.
+- Retrieval dùng semantic candidate search, BM25 lexical reranking và MMR diversity selection.
+- Chunking giữ heading context, ưu tiên sentence boundary và có overlap để tránh mất ngữ cảnh ở biên.
+- Yêu cầu tạo file phải sinh nội dung hoàn chỉnh bằng OpenAI theo extension; không trả placeholder hoặc chỉ lặp lại prompt.
 
 ## Operational notes
 
 - Rebuild vector database sau khi thay đổi source knowledge.
 - App phải fail loudly nếu thiếu `OPENAI_API_KEY`.
 - Dùng knowledge folder làm reference chính cho các Copilot edits sau này.
+- Sau nâng cấp chunking/retrieval, cần rebuild ChromaDB bằng `python src/ingest.py`.

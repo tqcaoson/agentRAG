@@ -31,9 +31,9 @@ except ImportError:
 
 
 try:
-    from src.tools import infer_generated_filename
+    from src.tools import infer_generated_filename, is_file_generation_request
 except ImportError:
-    from tools import infer_generated_filename
+    from tools import infer_generated_filename, is_file_generation_request
 
 
 
@@ -180,17 +180,18 @@ def get_turns():
 
 
 def is_file_request(text):
+    return is_file_generation_request(text)
 
-    text = text.lower()
 
-    keywords = [
-        "gen file",
-        "generate file",
-        "tạo file",
-        "tao file"
-    ]
-
-    return any(k in text for k in keywords)
+def generated_file_mime(filename):
+    extension = Path(filename).suffix.lower()
+    return {
+        ".txt": "text/plain",
+        ".md": "text/markdown",
+        ".csv": "text/csv",
+        ".json": "application/json",
+        ".html": "text/html",
+    }.get(extension, "application/octet-stream")
 
 
 
@@ -712,8 +713,9 @@ if (
         file_name=
         st.session_state.generated_file_name,
 
-        mime=
-        "text/markdown",
+        mime=generated_file_mime(
+            st.session_state.generated_file_name
+        ),
 
         use_container_width=True
     )

@@ -74,8 +74,14 @@ streamlit run src/app.py --server.address 0.0.0.0 --server.port 8501
 Project hiện dùng:
 
 - ChromaDB làm local vector database
-- OpenAI embeddings để retrieve chunk liên quan
+- OpenAI embeddings để lấy semantic candidate pool
+- BM25 lexical scoring kết hợp semantic score để rerank
+- MMR selection để giữ context liên quan nhưng giảm các chunk trùng lặp
 - OpenAI chat completions để tạo final answer
+
+Các biến tuning tùy chọn nằm trong `.env.example`: `RAG_TOP_K`, `RAG_CANDIDATE_K`, `RAG_MMR_LAMBDA`, `RAG_CHUNK_SIZE`, và `RAG_CHUNK_OVERLAP`.
+
+Yêu cầu như `tạo file story.txt kể một câu chuyện...` hoặc `viết câu chuyện dạng txt...` sẽ sinh nội dung thực bằng AI và hiển thị nút download đúng loại file.
 
 Sau khi thay đổi file trong `data/knowledge/`, hãy chạy lại:
 

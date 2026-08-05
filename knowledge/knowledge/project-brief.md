@@ -14,9 +14,11 @@ Một local-first personal RAG assistant có nhiệm vụ trả lời câu hỏi
 ## Luồng runtime chính
 
 1. User nhập prompt trong Streamlit.
-2. App retrieve các chunk phù hợp từ ChromaDB collection local.
+2. App lấy semantic candidates từ ChromaDB rồi hybrid-rerank bằng lexical relevance và MMR diversity.
 3. Context đã retrieve được gửi tới OpenAI chat completions.
 4. Answer được render trong app và lưu vào chat history.
+
+Với yêu cầu tạo file, app gọi OpenAI bằng prompt chuyên biệt theo extension (`txt`, `md`, `csv`, `json`, `html`) và cung cấp nội dung hoàn chỉnh qua nút download.
 
 ## Nguồn dữ liệu
 
