@@ -6,7 +6,11 @@ from pathlib import Path
 
 import chromadb
 from dotenv import load_dotenv
-from openai import OpenAI
+
+try:
+    from .model_provider import get_client, get_model, get_provider
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from model_provider import get_client, get_model, get_provider
 
 load_dotenv()
 
@@ -115,16 +119,10 @@ def chunk_text(
     return chunks
 
 
-def get_client() -> OpenAI:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key or api_key == "your_openai_api_key_here":
-        raise RuntimeError("OPENAI_API_KEY is missing. Set it in .env before running RAG.")
-    return OpenAI(api_key=api_key)
-
-
 def embed_texts(texts: list[str]) -> list[list[float]]:
-    client = get_client()
-    embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    provider = get_provider("embedding")
+    client = get_client(provider)
+    embedding_model = get_model("embedding", provider)
     response = client.embeddings.create(model=embedding_model, input=texts)
     return [item.embedding for item in response.data]
 

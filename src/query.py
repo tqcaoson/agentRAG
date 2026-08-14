@@ -6,19 +6,18 @@ from collections import Counter
 from pathlib import Path
 
 from dotenv import load_dotenv
-from openai import OpenAI
-
 sys.path.insert(0, os.path.dirname(__file__))
 
 try:
     from .ingest import CHROMA_COLLECTION, CHROMA_PATH, build_index, embed_texts, get_collection
+    from .model_provider import get_client, get_model, get_provider
 except ImportError:  # pragma: no cover - fallback for direct script execution
     from ingest import CHROMA_COLLECTION, CHROMA_PATH, build_index, embed_texts, get_collection
+    from model_provider import get_client, get_model, get_provider
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 DEFAULT_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
 DEFAULT_CANDIDATE_K = int(os.getenv("RAG_CANDIDATE_K", "20"))
 DEFAULT_MMR_LAMBDA = float(os.getenv("RAG_MMR_LAMBDA", "0.75"))
@@ -176,13 +175,10 @@ def generate_text(
     conversation_history=None,
     response_format: dict | None = None,
 ) -> str:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key or api_key == "your_openai_api_key_here":
-        raise RuntimeError("OPENAI_API_KEY is missing. Set it in .env before asking the assistant.")
-
-    client = OpenAI(api_key=api_key)
+    provider = get_provider("chat")
+    client = get_client(provider)
     request = {
-        "model": DEFAULT_CHAT_MODEL,
+        "model": get_model("chat", provider),
         "temperature": temperature,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -202,7 +198,8 @@ def answer_query(
     top_k: int = DEFAULT_TOP_K,
     conversation_history=None,
 ):
-    contexts = retrieve_context(query, top_k=top_k)
+    rag_enabled = os.getenv("RAG_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    contexts = retrieve_context(query, top_k=top_k) if rag_enabled else []
     context_text = format_context(contexts)
 
     system_message = system_prompt or (
@@ -213,12 +210,14 @@ def answer_query(
 
     if context_text:
         user_message = f"Context:\n{context_text}\n\nQuestion:\n{query}"
-    else:
+    elif rag_enabled:
         user_message = (
             "No relevant context was retrieved from the knowledge base. "
             "Answer the question using your own knowledge, and if useful mention that the answer is not grounded in local documents.\n\n"
             f"Question:\n{query}"
         )
+    else:
+        user_message = query
 
     return generate_text(
         user_message,

@@ -3,7 +3,8 @@
 ## Components
 
 - `src/ingest.py` - đọc local knowledge files, chunk theo paragraph/sentence với heading context và overlap, embed, rồi upsert vào ChromaDB.
-- `src/query.py` - lấy semantic candidate pool từ ChromaDB, hybrid-rerank bằng semantic score + BM25 lexical score, áp dụng MMR để giảm context trùng lặp, rồi gửi context đã chọn tới OpenAI.
+- `src/model_provider.py` - chọn OpenAI/Ollama client và model cho chat hoặc embeddings từ environment.
+- `src/query.py` - retrieval, hybrid rerank và MMR, rồi gửi context tới provider chat đã chọn.
 - `src/tools.py` - routing helper cho summaries, reports, text files và binary artifacts.
 - `src/artifacts.py` - gọi Images API và dựng workbook XLSX thật từ JSON có cấu trúc do AI sinh.
 - `src/agent.py` - simple router chọn tool cần gọi.
@@ -14,11 +15,11 @@
 ```mermaid
 flowchart TD
     A[Local knowledge files] --> B[Chunking]
-    B --> C[OpenAI embeddings]
+    B --> C[OpenAI or Ollama embeddings]
     C --> D[ChromaDB persistent collection]
     E[User prompt in Streamlit] --> F[Semantic candidate retrieval]
     F --> I[Hybrid BM25 reranking and MMR selection]
-    I --> G[OpenAI chat model]
+    I --> G[OpenAI or Ollama chat model]
     G --> H[Answer rendered in UI]
 ```
 
@@ -39,6 +40,10 @@ flowchart TD
 - File-generation request đi qua generation prompt riêng, không dùng template placeholder; download MIME được chọn theo extension.
 
 ## Retrieval configuration
+
+- `AI_PROVIDER`: provider mặc định (`openai` hoặc `ollama`).
+- `CHAT_PROVIDER`, `EMBEDDING_PROVIDER`: override riêng cho từng luồng.
+- Đổi embedding provider/model yêu cầu rebuild ChromaDB.
 
 - `RAG_TOP_K`: số chunk cuối cùng đưa vào generation, mặc định `5`.
 - `RAG_CANDIDATE_K`: kích thước semantic candidate pool trước reranking, mặc định `20`.

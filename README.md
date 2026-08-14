@@ -1,6 +1,6 @@
 # brse-home-rag
 
-Dự án này là một personal RAG assistant dựa trên kế hoạch trong [agents.md](agents.md). Hệ thống lưu personal knowledge trong các file markdown và CSV cục bộ, index chúng vào ChromaDB local, và dùng OpenAI cho embeddings lẫn answer generation.
+Dự án này là một personal RAG assistant. Hệ thống lưu personal knowledge trong các file markdown và CSV cục bộ, index chúng vào ChromaDB local, và hỗ trợ OpenAI hoặc Ollama local cho embeddings và answer generation.
 
 ## Mục tiêu
 
@@ -18,7 +18,7 @@ Dự án này là một personal RAG assistant dựa trên kế hoạch trong [a
 
 - Python 3.10+
 - `pip`
-- `OPENAI_API_KEY` trong file `.env`
+- OpenAI API key, hoặc Ollama đang chạy local
 
 ## Hướng dẫn setup
 
@@ -47,7 +47,37 @@ pip install -r requirements.txt
 cp .env.example .env
 ```
 
-Điền các biến cần thiết như `OPENAI_API_KEY`, `OPENAI_CHAT_MODEL`, `OPENAI_EMBEDDING_MODEL`, `OPENAI_IMAGE_MODEL`, và `OPENAI_IMAGE_QUALITY` nếu muốn override mặc định.
+Chọn provider trong `.env`. Để chạy hoàn toàn local:
+
+```bash
+ollama pull llama3.2
+ollama pull nomic-embed-text
+```
+
+```env
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://localhost:11434/v1
+OLLAMA_CHAT_MODEL=llama3.2
+OLLAMA_EMBEDDING_MODEL=nomic-embed-text
+```
+
+Để dùng OpenAI API:
+
+```env
+AI_PROVIDER=openai
+OPENAI_API_KEY=sk-...
+OPENAI_CHAT_MODEL=gpt-4o-mini
+OPENAI_EMBEDDING_MODEL=text-embedding-3-small
+```
+
+Có thể cấu hình hybrid bằng `CHAT_PROVIDER` và `EMBEDDING_PROVIDER`. Hai biến này nhận `openai` hoặc `ollama` và override `AI_PROVIDER`, ví dụ chat API nhưng embeddings local:
+
+```env
+AI_PROVIDER=openai
+CHAT_PROVIDER=openai
+EMBEDDING_PROVIDER=ollama
+OPENAI_API_KEY=sk-...
+```
 
 4. Đưa tài liệu cá nhân vào `data/knowledge/`.
 
@@ -65,8 +95,10 @@ python src/ingest.py
 6. Chạy CLI hoặc Streamlit UI.
 
 ```bash
-python src/agent.py &
-streamlit run src/app.py --server.address 0.0.0.0 --server.port 8501
+python src/agent.py & streamlit run src/app.py --server.address 0.0.0.0 --server.port 8501
+python -m streamlit run src/app.py \
+  --server.address 0.0.0.0 \
+  --server.port 8501
 ```
 
 ## RAG setup
@@ -74,12 +106,14 @@ streamlit run src/app.py --server.address 0.0.0.0 --server.port 8501
 Project hiện dùng:
 
 - ChromaDB làm local vector database
-- OpenAI embeddings để lấy semantic candidate pool
+- OpenAI hoặc Ollama embeddings để lấy semantic candidate pool
 - BM25 lexical scoring kết hợp semantic score để rerank
 - MMR selection để giữ context liên quan nhưng giảm các chunk trùng lặp
-- OpenAI chat completions để tạo final answer
+- OpenAI hoặc Ollama chat completions để tạo final answer
 
 Các biến tuning tùy chọn nằm trong `.env.example`: `RAG_TOP_K`, `RAG_CANDIDATE_K`, `RAG_MMR_LAMBDA`, `RAG_CHUNK_SIZE`, và `RAG_CHUNK_OVERLAP`.
+
+Đặt `RAG_ENABLED=false` để bỏ qua embeddings/ChromaDB và chat trực tiếp với model đã chọn. Chế độ này hữu ích khi chưa cài embedding model local.
 
 Yêu cầu như `tạo file story.txt kể một câu chuyện...` hoặc `viết câu chuyện dạng txt...` sẽ sinh nội dung thực bằng AI và hiển thị nút download đúng loại file.
 
@@ -93,14 +127,15 @@ Sau khi thay đổi file trong `data/knowledge/`, hãy chạy lại:
 python src/ingest.py
 ```
 
-Không cần chạy ingest khi chỉ dùng chat memory, tạo ảnh hoặc tạo Excel. Lệnh này chỉ rebuild vector index từ source knowledge và cần API key hợp lệ.
+Không cần chạy ingest khi chỉ dùng chat memory, tạo ảnh hoặc tạo Excel. Lệnh này chỉ rebuild vector index từ source knowledge và cần provider embeddings đang hoạt động.
 
 Sau đó mở lại query loop hoặc Streamlit app.
 
 ## Ghi chú
 
-- RAG layer cần `OPENAI_API_KEY`.
-- Giữ `OPENAI_CHAT_MODEL` và `OPENAI_EMBEDDING_MODEL` trong `.env` nếu muốn đổi default.
+- Khi đổi embedding provider hoặc model, bắt buộc chạy lại `python src/ingest.py` vì vector dimension/model có thể khác nhau.
+- Tạo ảnh vẫn dùng OpenAI Images API và cần `OPENAI_API_KEY`; Ollama hỗ trợ chat và embeddings trong project này.
+- Đổi provider trong `.env` rồi restart CLI/Streamlit, không cần sửa source code.
 - Streamlit UI có thể chạy từ MacBook qua browser khi mở port 8501.
 
 ## Copilot knowledge pack
