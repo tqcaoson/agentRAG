@@ -207,6 +207,12 @@ model. Với bản cũ, train lại bằng tay 1 lần:
 docker compose exec app python src/ingest.py
 ```
 
+### Chat báo `400 ... 'temperature' does not support 0.2 with this model`
+
+Một số model mới (vd reasoning model như `gpt-6-luna`) chỉ chấp nhận
+`temperature` mặc định (=1). Bản mới tự thử lại không có `temperature`
+khi gặp lỗi này, không cần đổi model hay sửa cấu hình.
+
 ### `docker ps` thấy Qdrant báo `(unhealthy)` (bản cũ)
 
 Bản compose cũ đặt healthcheck bằng `curl`, mà image Qdrant không có

@@ -6,7 +6,7 @@ from collections import Counter
 from pathlib import Path
 
 from dotenv import load_dotenv
-from openai import APIConnectionError
+from openai import APIConnectionError, BadRequestError
 sys.path.insert(0, os.path.dirname(__file__))
 
 try:
@@ -197,6 +197,22 @@ def _trim_conversation(conversation_history, max_messages: int = 10, max_chars: 
     return list(reversed(history))
 
 
+def _create_chat_completion(client, request: dict):
+    """Gọi chat completions, tự bỏ temperature nếu model không hỗ trợ.
+
+    Một số model mới (vd reasoning model như gpt-6-luna) chỉ chấp nhận
+    temperature mặc định (=1) và báo 400 khi nhận temperature khác. Khi
+    đó thử lại 1 lần không có temperature; lỗi 400 khác thì giữ nguyên.
+    """
+    try:
+        return client.chat.completions.create(**request)
+    except BadRequestError as exc:
+        if "temperature" not in str(exc).lower() or "temperature" not in request:
+            raise
+        retry_request = {k: v for k, v in request.items() if k != "temperature"}
+        return client.chat.completions.create(**retry_request)
+
+
 def generate_text(
     prompt: str,
     system_prompt: str,
@@ -218,7 +234,7 @@ def generate_text(
     if response_format:
         request["response_format"] = response_format
     try:
-        response = client.chat.completions.create(**request)
+        response = _create_chat_completion(client, request)
     except APIConnectionError as exc:
         # SDK chỉ báo "Connection error." nên thêm hướng dẫn cụ thể.
         raise RuntimeError(connection_error_hint(provider)) from exc
