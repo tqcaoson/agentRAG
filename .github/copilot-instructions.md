@@ -14,7 +14,7 @@ Hãy dùng các file trong `knowledge/` làm primary project memory.
 ## Bối cảnh dự án
 
 - App là một personal RAG assistant.
-- Local vector storage là ChromaDB tại `storage/chroma_db`.
+- Local vector storage là Qdrant (collection `home_knowledge`), chạy bằng Docker Compose; mọi thao tác Qdrant đi qua `src/qdrant_store.py`.
 - OpenAI được dùng cho embeddings và answer generation.
 - Streamlit là UI layer.
 - Giữ implementation đơn giản, rõ ràng, và dễ debug.

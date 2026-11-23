@@ -1,0 +1,1 @@
+tôi đang học n1 được 900 từ và 200 chữ hán

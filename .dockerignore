@@ -1,0 +1,9 @@
+.venv/
+.env
+.git/
+__pycache__/
+*.pyc
+.DS_Store
+storage/chroma_db
+qdrant_storage/
+data/knowledge/uploads/

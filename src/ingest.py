@@ -5,9 +5,15 @@ import re
 from pathlib import Path
 
 from dotenv import load_dotenv
+from openai import APIConnectionError
 
 try:
-    from .model_provider import get_client, get_model, get_provider
+    from .model_provider import (
+        connection_error_hint,
+        get_client,
+        get_model,
+        get_provider,
+    )
     from .qdrant_store import (
         QDRANT_COLLECTION,
         QDRANT_URL,
@@ -20,7 +26,12 @@ try:
         upsert_chunks,
     )
 except ImportError:  # pragma: no cover - fallback for direct script execution
-    from model_provider import get_client, get_model, get_provider
+    from model_provider import (
+        connection_error_hint,
+        get_client,
+        get_model,
+        get_provider,
+    )
     from qdrant_store import (
         QDRANT_COLLECTION,
         QDRANT_URL,
@@ -141,7 +152,11 @@ def embed_texts(texts: list[str]) -> list[list[float]]:
     provider = get_provider("embedding")
     client = get_client(provider)
     embedding_model = get_model("embedding", provider)
-    response = client.embeddings.create(model=embedding_model, input=texts)
+    try:
+        response = client.embeddings.create(model=embedding_model, input=texts)
+    except APIConnectionError as exc:
+        # SDK chỉ báo "Connection error." nên thêm hướng dẫn cụ thể.
+        raise RuntimeError(connection_error_hint(provider)) from exc
     return [item.embedding for item in response.data]
 
 

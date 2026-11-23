@@ -132,6 +132,22 @@ docker compose exec app python src/ingest.py   # train lại toàn bộ knowledg
 Docker chưa được cài hoặc chưa chạy. Mở Docker Desktop và đợi trạng thái
 *Running*, rồi chạy lại lệnh trong terminal mới.
 
+### Container app Restarting, log báo `exec ./docker-entrypoint.sh: no such file or directory`
+
+File `docker-entrypoint.sh` trên máy bạn đã bị chuyển thành line ending
+CRLF của Windows (thường do mở/lưu file bằng trình soạn thảo Windows
+hoặc qua git với `autocrlf`), làm Linux trong container không tìm thấy
+trình thông dịch `/bin/sh`. Dockerfile bản mới đã tự loại bỏ ký tự `\r`
+lúc build nên không còn lỗi này: lấy Dockerfile mới, rồi chạy
+`docker compose up -d --build app`. Kiểm tra nhanh file trong image cũ
+có bị CRLF không:
+
+```bash
+docker run --rm --entrypoint sh agentrag-app -c "head -1 /app/docker-entrypoint.sh | od -An -c"
+```
+
+Nếu kết quả có `\r` trước `\n` thì đúng là lỗi này.
+
 ### App báo `OPENAI_API_KEY is missing`
 
 File `.env` chưa có key thật, hoặc key vẫn là `your_openai_api_key_here`.
@@ -147,6 +163,46 @@ Key sai hoặc đã bị thu hồi. Tạo key mới trên platform.openai.com, c
 
 Tài khoản OpenAI hết credit. Nạp thêm credit rồi thử lại. Chat và
 embedding đều tính phí theo lượng dùng của OpenAI.
+
+### Chat báo `Error: ... Không kết nối được tới OpenAI API`
+
+Container app không nối được tới `api.openai.com` (lỗi mạng, không phải
+sai key — sai key sẽ báo `Incorrect API key`). Kiểm tra từng bước:
+
+```bash
+# 1. Xem log app: có dòng "ingest lan dau that bai" không?
+docker compose logs app
+
+# 2. Kiểm tra DNS trong container (phải in ra 1 địa chỉ IP)
+docker compose exec app python -c "import socket; print(socket.gethostbyname('api.openai.com'))"
+
+# 3. Kiểm tra HTTPS trong container: nếu báo lỗi 401 là TỐT (đã nối
+# được, chỉ thiếu key trong request thử); nếu báo URLError/timeout là
+# container chưa ra được mạng
+docker compose exec app python -c "import urllib.request; urllib.request.urlopen('https://api.openai.com/v1/models', timeout=10)"
+```
+
+So sánh với máy host (PowerShell):
+
+```powershell
+curl.exe https://api.openai.com/v1/models
+```
+
+- Máy host nối được mà container không: khởi động lại Docker Desktop
+  (lỗi mạng Docker Desktop sau khi máy sleep/hibernate khá thường gặp),
+  kiểm tra tường lửa/VPN.
+- Cả hai đều không nối được: mạng của bạn đang chặn `api.openai.com`,
+  thử mạng khác hoặc VPN.
+- Nối được rồi thì train lại knowledge:
+  `docker compose exec app python src/ingest.py`, rồi hỏi lại trong chat.
+
+### `docker ps` thấy Qdrant báo `(unhealthy)` (bản cũ)
+
+Bản compose cũ đặt healthcheck bằng `curl`, mà image Qdrant không có
+sẵn `curl` nên check luôn fail dù Qdrant vẫn chạy tốt. Bản mới đã bỏ
+healthcheck này (app tự đợi Qdrant trong entrypoint). Cập nhật
+`docker-compose.yml` mới rồi chạy `docker compose up -d` để tạo lại
+container Qdrant (dữ liệu trong volume giữ nguyên).
 
 ### `docker compose up` báo port `8501` / `6333` đã bị chiếm
 
@@ -188,3 +244,79 @@ docker compose up -d --build
 
 Lệnh này xóa container, volume Qdrant và build lại image. File knowledge
 trong `data/` và `.env` không bị ảnh hưởng.
+
+## 8. Dùng Ollama local thay cho OpenAI
+
+App có thể dùng Ollama trên máy host cho chat và/hoặc embeddings, không
+tốn phí API. Lưu ý: container Docker không thấy `localhost` của máy host
+nên cần 3 bước sau (chỉ làm 1 lần):
+
+### 8.1. Pull model trên máy host
+
+```powershell
+ollama list                 # xem model đã có
+ollama pull qwen3:4b        # model chat trong .env (OLLAMA_CHAT_MODEL)
+ollama pull nomic-embed-text  # model embedding (OLLAMA_EMBEDDING_MODEL)
+```
+
+### 8.2. Cho Ollama lắng nghe ngoài localhost
+
+Mặc định Ollama chỉ nghe trên `127.0.0.1` nên container Docker không nối
+được. Trên Windows, đặt biến môi trường rồi khởi động lại Ollama:
+
+```powershell
+setx OLLAMA_HOST "0.0.0.0:11434"
+```
+
+Sau đó thoát hẳn Ollama (icon khay hệ thống > Quit) rồi mở lại. Kiểm tra:
+
+```powershell
+curl.exe http://localhost:11434/api/tags
+```
+
+Lưu ý: Ollama sẽ nghe trên mọi interface của máy (kể cả mạng LAN). Chỉ
+dùng trên mạng nhà đáng tin.
+
+### 8.3. Trỏ app sang Ollama của máy host
+
+Trong `.env`:
+
+```dotenv
+AI_PROVIDER=ollama
+OLLAMA_BASE_URL=http://host.docker.internal:11434/v1
+```
+
+`host.docker.internal` là tên đặc biệt của Docker Desktop (Windows/Mac)
+trỏ về máy host. Trên Linux cần thêm vào service `app` trong
+`docker-compose.yml`: `extra_hosts: ["host.docker.internal:host-gateway"]`.
+
+Rồi khởi động lại app (không cần build lại vì chỉ đổi biến môi trường):
+
+```bash
+docker compose up -d
+```
+
+Lần đầu chuyển sang Ollama, collection Qdrant sẽ được tạo lại (vector
+embedding của Ollama khác kích thước của OpenAI) và entrypoint tự train
+lại knowledge. Xem log để xác nhận: `docker compose logs app`.
+
+### 8.4. Dùng lai: chat OpenAI + embedding Ollama (hoặc ngược lại)
+
+```dotenv
+CHAT_PROVIDER=openai
+EMBEDDING_PROVIDER=ollama
+```
+
+### 8.5. Vẫn báo không kết nối được tới Ollama
+
+Kiểm tra từ trong container (phải trả về 200):
+
+```bash
+docker compose exec app python -c "import urllib.request; print(urllib.request.urlopen('http://host.docker.internal:11434/api/tags', timeout=5).status)"
+```
+
+- Báo lỗi kết nối: kiểm tra lại bước 8.2 (Ollama đã restart sau khi đặt
+  `OLLAMA_HOST` chưa), và Windows Firewall có chặn port 11434 từ mạng
+  WSL không.
+- Báo 200 mà chat vẫn lỗi: xem log app (`docker compose logs app`), có
+  thể model chưa được pull (lỗi `model ... not found`).

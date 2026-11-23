@@ -10,12 +10,11 @@ services:
       - "6334:6334" # gRPC
     volumes:
       - qdrant_storage:/qdrant/storage
-    healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:6333/healthz"]
-      interval: 10s
-      timeout: 5s
-      retries: 12
-      start_period: 10s
+    # Không đặt healthcheck ở đây: image qdrant/qdrant không có sẵn
+    # curl/wget/nc nên healthcheck kiểu curl luôn fail và container bị
+    # gắn cờ (unhealthy) dù Qdrant vẫn chạy tốt. App tự đợi Qdrant sẵn
+    # sàng trong docker-entrypoint.sh trước khi chạy. Muốn kiểm tra
+    # Qdrant thì mở dashboard http://localhost:6333/dashboard.
 
   # Streamlit UI + RAG harness. LLM vẫn chạy trên OpenAI API.
   app:

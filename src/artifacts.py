@@ -6,14 +6,16 @@ from io import BytesIO
 from pathlib import Path
 
 import httpx
-from openai import OpenAI
+from openai import APIConnectionError, OpenAI
 from openpyxl import Workbook
 from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 try:
+    from .model_provider import connection_error_hint
     from .query import generate_text
 except ImportError:  # pragma: no cover
+    from model_provider import connection_error_hint
     from query import generate_text
 
 
@@ -35,13 +37,17 @@ def generate_image_artifact(user_request, conversation_history, artifact_class, 
         f"Conversation context:\n{history}\n\nImage request:\n{user_request}"
     )
     client = OpenAI(api_key=api_key)
-    response = client.images.generate(
-        model=os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1"),
-        prompt=prompt,
-        size="1024x1024",
-        quality=os.getenv("OPENAI_IMAGE_QUALITY", "auto"),
-        n=1,
-    )
+    try:
+        response = client.images.generate(
+            model=os.getenv("OPENAI_IMAGE_MODEL", "gpt-image-1"),
+            prompt=prompt,
+            size="1024x1024",
+            quality=os.getenv("OPENAI_IMAGE_QUALITY", "auto"),
+            n=1,
+        )
+    except APIConnectionError as exc:
+        # Tạo ảnh luôn dùng OpenAI nên hint cho provider openai.
+        raise RuntimeError(connection_error_hint("openai")) from exc
     image_result = response.data[0]
     encoded = getattr(image_result, "b64_json", None)
     image_url = getattr(image_result, "url", None)

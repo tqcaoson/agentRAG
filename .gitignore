@@ -2,6 +2,9 @@
 .env
 __pycache__/
 *.pyc
+# Dữ liệu vector cũ (ChromaDB) — bản mới dùng Qdrant qua Docker volume,
+# không còn lưu ở đây. Có thể xóa thư mục này sau khi đã train lại.
 storage/chroma_db
+qdrant_storage/
 .DS_Store
 /data/knowledge/uploads

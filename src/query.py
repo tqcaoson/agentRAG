@@ -6,11 +6,17 @@ from collections import Counter
 from pathlib import Path
 
 from dotenv import load_dotenv
+from openai import APIConnectionError
 sys.path.insert(0, os.path.dirname(__file__))
 
 try:
     from .ingest import build_index, embed_texts
-    from .model_provider import get_client, get_model, get_provider
+    from .model_provider import (
+        connection_error_hint,
+        get_client,
+        get_model,
+        get_provider,
+    )
     from .qdrant_store import (
         QDRANT_COLLECTION,
         QDRANT_URL,
@@ -19,7 +25,12 @@ try:
     )
 except ImportError:  # pragma: no cover - fallback for direct script execution
     from ingest import build_index, embed_texts
-    from model_provider import get_client, get_model, get_provider
+    from model_provider import (
+        connection_error_hint,
+        get_client,
+        get_model,
+        get_provider,
+    )
     from qdrant_store import (
         QDRANT_COLLECTION,
         QDRANT_URL,
@@ -193,7 +204,11 @@ def generate_text(
     }
     if response_format:
         request["response_format"] = response_format
-    response = client.chat.completions.create(**request)
+    try:
+        response = client.chat.completions.create(**request)
+    except APIConnectionError as exc:
+        # SDK chỉ báo "Connection error." nên thêm hướng dẫn cụ thể.
+        raise RuntimeError(connection_error_hint(provider)) from exc
     return response.choices[0].message.content or ""
 
 

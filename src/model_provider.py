@@ -31,6 +31,30 @@ def get_client(provider: str) -> OpenAI:
     return OpenAI(api_key=api_key)
 
 
+def connection_error_hint(provider: str) -> str:
+    """Hướng dẫn khắc phục khi không nối được tới provider.
+
+    OpenAI SDK chỉ báo chung chung "Connection error." nên cần thêm
+    ngữ cảnh để user biết phải kiểm tra cái gì.
+    """
+    if provider == "ollama":
+        base_url = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+        return (
+            f"Không kết nối được tới Ollama tại {base_url}. "
+            "Kiểm tra Ollama đã chạy chưa ('ollama ps' trên máy host). "
+            "Nếu app chạy trong Docker, localhost trong container không phải "
+            "máy host: đặt OLLAMA_BASE_URL=http://host.docker.internal:11434/v1 "
+            "trong .env và cho Ollama lắng nghe 0.0.0.0 "
+            "(OLLAMA_HOST=0.0.0.0:11434, rồi khởi động lại Ollama)."
+        )
+    return (
+        "Không kết nối được tới OpenAI API (api.openai.com). "
+        "Kiểm tra mạng/DNS của máy: thử mở https://api.openai.com trên "
+        "trình duyệt, kiểm tra VPN/tường lửa, hoặc khởi động lại "
+        "Docker Desktop rồi thử lại."
+    )
+
+
 def get_model(purpose: str, provider: str) -> str:
     defaults = {
         ("chat", "openai"): "gpt-4o-mini",
