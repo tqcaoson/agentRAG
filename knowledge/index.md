@@ -4,8 +4,8 @@
 
 - Personal RAG assistant cho study notes, personal projects, và task summaries.
 - Nguồn dữ liệu là các file markdown và CSV local trong `data/knowledge/`.
-- Retrieval dùng ChromaDB collection local được lưu ở `storage/chroma_db`.
-- Answer generation dùng OpenAI chat completions.
+- Retrieval dùng Qdrant collection `home_knowledge`, chạy trong Docker, dữ liệu lưu ở volume `qdrant_storage`.
+- Embeddings và answer generation có thể dùng OpenAI hoặc Ollama local qua cấu hình provider.
 - UI dùng Streamlit.
 
 ## Tài liệu tham chiếu

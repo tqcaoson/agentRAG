@@ -2,9 +2,11 @@
 
 ## Durable facts
 
-- Local vector storage là ChromaDB trong `storage/chroma_db`.
-- OpenAI chat model default: `gpt-4o-mini`.
-- OpenAI embedding model default: `text-embedding-3-small`.
+- Local vector storage là Qdrant (collection `home_knowledge`), chạy trong Docker, dữ liệu ở volume `qdrant_storage`. ChromaDB đã bị thay thế hoàn toàn.
+- Cài đặt/chạy bằng Docker Compose (`docker compose up -d --build`); app tự train lần đầu khi Qdrant trống.
+- Provider mặc định là OpenAI; có thể chuyển chat và embeddings sang Ollama bằng `.env`.
+- OpenAI defaults: chat `gpt-4o-mini`, embedding `text-embedding-3-small`.
+- Ollama defaults: chat `llama3.2`, embedding `nomic-embed-text`.
 - Streamlit là UI layer.
 - OpenAI image model default: `gpt-image-1`.
 - Image quality default: `auto`; không gửi `response_format` vì endpoint hiện tại trả base64 mặc định và từ chối tham số này.
@@ -12,7 +14,7 @@
 ## Known decisions
 
 - Giữ assistant local-first cho retrieval.
-- Chỉ dùng OpenAI cho embeddings và generation.
+- Chat và embeddings hỗ trợ OpenAI/Ollama và cấu hình hybrid.
 - Giữ UI đơn giản và dễ debug.
 - Sidebar quick prompts chỉ nên prefill prompt input.
 - Nút Send phải execute assistant.
@@ -26,7 +28,10 @@
 ## Operational notes
 
 - Rebuild vector database sau khi thay đổi source knowledge.
-- App phải fail loudly nếu thiếu `OPENAI_API_KEY`.
+- OpenAI flow phải fail loudly nếu thiếu `OPENAI_API_KEY`; Ollama flow không yêu cầu key.
+- Tạo ảnh vẫn dùng OpenAI Images API.
+- Phải rebuild index khi đổi embedding provider hoặc model.
 - Dùng knowledge folder làm reference chính cho các Copilot edits sau này.
-- Sau nâng cấp chunking/retrieval, cần rebuild ChromaDB bằng `python src/ingest.py`.
+- Sau nâng cấp chunking/retrieval, cần rebuild Qdrant collection bằng `docker compose exec app python src/ingest.py` (hoặc nút Train lại toàn bộ trong UI).
+- Trang Quản lý Knowledge: sửa file thì train lại file đó, xóa file thì xóa cả vector; dọn vector rác khi file bị xóa ngoài UI.
 - Không cần chạy ingest khi chỉ tạo ảnh/Excel hoặc dùng chat memory; chỉ rebuild khi source knowledge/index thay đổi.

@@ -1,0 +1,1 @@
+tôi đang học n1, học được 950 từ

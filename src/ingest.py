@@ -1,20 +1,42 @@
+import argparse
 import csv
-import hashlib
 import os
 import re
 from pathlib import Path
 
-import chromadb
 from dotenv import load_dotenv
-from openai import OpenAI
+
+try:
+    from .model_provider import get_client, get_model, get_provider
+    from .qdrant_store import (
+        QDRANT_COLLECTION,
+        QDRANT_URL,
+        count_points,
+        delete_by_source,
+        delete_collection,
+        ensure_collection,
+        get_qdrant_client,
+        point_id_for,
+        upsert_chunks,
+    )
+except ImportError:  # pragma: no cover - fallback for direct script execution
+    from model_provider import get_client, get_model, get_provider
+    from qdrant_store import (
+        QDRANT_COLLECTION,
+        QDRANT_URL,
+        count_points,
+        delete_by_source,
+        delete_collection,
+        ensure_collection,
+        get_qdrant_client,
+        point_id_for,
+        upsert_chunks,
+    )
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DATA_DIR = BASE_DIR / "data" / "knowledge"
-DEFAULT_CHROMA_PATH = BASE_DIR / "storage" / "chroma_db"
-CHROMA_PATH = Path(os.getenv("CHROMA_PATH", str(DEFAULT_CHROMA_PATH)))
-CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "home_knowledge")
 SUPPORTED_EXTENSIONS = {".md", ".txt", ".csv"}
 DEFAULT_CHUNK_SIZE = int(os.getenv("RAG_CHUNK_SIZE", "1200"))
 DEFAULT_CHUNK_OVERLAP = int(os.getenv("RAG_CHUNK_OVERLAP", "180"))
@@ -115,90 +137,144 @@ def chunk_text(
     return chunks
 
 
-def get_client() -> OpenAI:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key or api_key == "your_openai_api_key_here":
-        raise RuntimeError("OPENAI_API_KEY is missing. Set it in .env before running RAG.")
-    return OpenAI(api_key=api_key)
-
-
 def embed_texts(texts: list[str]) -> list[list[float]]:
-    client = get_client()
-    embedding_model = os.getenv("OPENAI_EMBEDDING_MODEL", "text-embedding-3-small")
+    provider = get_provider("embedding")
+    client = get_client(provider)
+    embedding_model = get_model("embedding", provider)
     response = client.embeddings.create(model=embedding_model, input=texts)
     return [item.embedding for item in response.data]
 
 
-def get_collection():
-    CHROMA_PATH.mkdir(parents=True, exist_ok=True)
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
-    return client.get_or_create_collection(name=CHROMA_COLLECTION)
+def _relative_source(path: Path) -> str:
+    return str(path.relative_to(BASE_DIR)).replace(os.sep, "/")
+
+
+def _prepare_chunks(path: Path) -> tuple[list[str], list[dict]]:
+    """Chunk 1 file, trả về (danh sách chunk text, danh sách payload)."""
+    source = _relative_source(path)
+    text = load_text(path)
+    documents: list[str] = []
+    metadatas: list[dict] = []
+    for chunk_index, chunk in enumerate(chunk_text(text)):
+        documents.append(chunk)
+        metadatas.append({
+            "source": source,
+            "chunk_index": chunk_index,
+            "content": chunk,
+        })
+    return documents, metadatas
+
+
+def _upsert_embedded(documents: list[str], metadatas: list[dict]) -> int:
+    """Embed rồi upsert các chunk vào Qdrant. Trả về số chunk đã ghi."""
+    if not documents:
+        return 0
+    # Embed trước, tạo collection sau: nếu API embedding lỗi thì index
+    # cũ vẫn nguyên vẹn, không bị xóa rồi bỏ dở giữa chừng.
+    embeddings = embed_texts(documents)
+    ensure_collection(vector_size=len(embeddings[0]))
+    items = [
+        {
+            "id": point_id_for(
+                metadata["source"], metadata["chunk_index"], document
+            ),
+            "vector": embedding,
+            "payload": metadata,
+        }
+        for document, metadata, embedding in zip(documents, metadatas, embeddings)
+    ]
+    return upsert_chunks(items)
 
 
 def build_index(force: bool = False):
+    """Index toàn bộ file trong data/knowledge vào Qdrant.
+
+    ``force=True`` xóa sạch collection trước rồi index lại từ đầu (dùng
+    khi đổi embedding model hoặc muốn train lại toàn bộ).
+    """
     documents: list[str] = []
-    metadatas: list[dict[str, str]] = []
-    ids: list[str] = []
+    metadatas: list[dict] = []
 
     for path in iter_files(DATA_DIR):
-        source = str(path.relative_to(BASE_DIR)).replace(os.sep, "/")
-        text = load_text(path)
-        for chunk_index, chunk in enumerate(chunk_text(text)):
-            content_hash = hashlib.sha1(f"{source}:{chunk_index}:{chunk}".encode("utf-8")).hexdigest()
-            documents.append(chunk)
-            metadatas.append({"source": source, "chunk_index": str(chunk_index)})
-            ids.append(content_hash)
+        docs, metas = _prepare_chunks(path)
+        documents.extend(docs)
+        metadatas.extend(metas)
 
     if not documents:
-        return {"chunks": 0, "collection": CHROMA_COLLECTION, "path": str(CHROMA_PATH)}
+        return {"chunks": 0, "collection": QDRANT_COLLECTION, "url": QDRANT_URL}
 
-    # Finish the external API operation before replacing a healthy local index.
-    embeddings = embed_texts(documents)
-    client = chromadb.PersistentClient(path=str(CHROMA_PATH))
     if force:
-        try:
-            client.delete_collection(name=CHROMA_COLLECTION)
-        except Exception:
-            pass
-    collection = client.get_or_create_collection(name=CHROMA_COLLECTION)
-    collection.upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
+        delete_collection()
+    count = _upsert_embedded(documents, metadatas)
 
-    return {"chunks": len(documents), "collection": CHROMA_COLLECTION, "path": str(CHROMA_PATH)}
+    return {"chunks": count, "collection": QDRANT_COLLECTION, "url": QDRANT_URL}
 
 
 def ingest_file(path: Path) -> dict:
-    """Ingest a single file into the Chroma collection.
+    """Ingest 1 file vào Qdrant.
 
-    Returns a dict with number of chunks added and the collection name.
+    Xóa mọi chunk cũ của file này trước rồi mới upsert chunk mới, để
+    nội dung đã sửa không để lại vector cũ. Trả về số chunk đã thêm.
     """
     if not path.exists() or not path.is_file():
         raise FileNotFoundError(f"File not found: {path}")
 
-    collection = get_collection()
-
-    source = str(path.relative_to(BASE_DIR)).replace(os.sep, "/")
-    text = load_text(path)
-    documents: list[str] = []
-    metadatas: list[dict[str, str]] = []
-    ids: list[str] = []
-
-    for chunk_index, chunk in enumerate(chunk_text(text)):
-        content_hash = hashlib.sha1(f"{source}:{chunk_index}:{chunk}".encode("utf-8")).hexdigest()
-        documents.append(chunk)
-        metadatas.append({"source": source, "chunk_index": str(chunk_index)})
-        ids.append(content_hash)
-
+    documents, metadatas = _prepare_chunks(path)
     if not documents:
-        return {"chunks": 0, "collection": CHROMA_COLLECTION}
+        # File rỗng: chỉ dọn vector cũ, không thêm gì.
+        delete_by_source(_relative_source(path))
+        return {"chunks": 0, "collection": QDRANT_COLLECTION}
 
+    # Embed trước, xóa cũ sau: nếu embedding lỗi thì vector cũ còn nguyên.
     embeddings = embed_texts(documents)
-    # Replace all old chunks of this source so edits do not leave stale content behind.
-    collection.delete(where={"source": source})
-    collection.upsert(ids=ids, documents=documents, metadatas=metadatas, embeddings=embeddings)
+    ensure_collection(vector_size=len(embeddings[0]))
+    source = _relative_source(path)
+    delete_by_source(source)
+    items = [
+        {
+            "id": point_id_for(
+                metadata["source"], metadata["chunk_index"], document
+            ),
+            "vector": embedding,
+            "payload": metadata,
+        }
+        for document, metadata, embedding in zip(documents, metadatas, embeddings)
+    ]
+    count = upsert_chunks(items)
 
-    return {"chunks": len(documents), "collection": CHROMA_COLLECTION}
+    return {"chunks": count, "collection": QDRANT_COLLECTION}
+
+
+def delete_source(source: str) -> dict:
+    """Xóa mọi chunk của 1 file nguồn khỏi Qdrant (không xóa file)."""
+    deleted = delete_by_source(source)
+    return {"deleted_chunks": deleted, "collection": QDRANT_COLLECTION}
+
+
+def index_is_empty() -> bool:
+    """True khi Qdrant chưa có collection hoặc collection chưa có point."""
+    try:
+        return count_points(client=get_qdrant_client()) == 0
+    except Exception:
+        return True
 
 
 if __name__ == "__main__":
-    result = build_index(force=True)
-    print(f"Indexed {result['chunks']} chunks into {result['collection']} at {result['path']}")
+    parser = argparse.ArgumentParser(description="Index knowledge files into Qdrant.")
+    parser.add_argument(
+        "--if-empty",
+        action="store_true",
+        help="Chỉ index khi collection đang trống (dùng lúc khởi động container).",
+    )
+    parser.add_argument(
+        "--no-force",
+        action="store_true",
+        help="Không xóa collection trước khi index (mặc định xóa rồi index lại).",
+    )
+    args = parser.parse_args()
+
+    if args.if_empty and not index_is_empty():
+        print(f"Qdrant collection '{QDRANT_COLLECTION}' đã có dữ liệu, bỏ qua ingest.")
+    else:
+        result = build_index(force=not args.no_force)
+        print(f"Indexed {result['chunks']} chunks into {result['collection']} at {result['url']}")

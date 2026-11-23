@@ -8,14 +8,14 @@ Một local-first personal RAG assistant có nhiệm vụ trả lời câu hỏi
 
 - Python
 - Streamlit
-- ChromaDB
+- Qdrant (vector database, chạy bằng Docker)
 - OpenAI API
 - openpyxl
 
 ## Luồng runtime chính
 
 1. User nhập prompt trong Streamlit.
-2. App lấy semantic candidates từ ChromaDB rồi hybrid-rerank bằng lexical relevance và MMR diversity.
+2. App lấy semantic candidates từ Qdrant rồi hybrid-rerank bằng lexical relevance và MMR diversity.
 3. Context đã retrieve được gửi tới OpenAI chat completions.
 4. Answer được render và lưu vào session history; các lượt gần nhất trở thành context cho câu hỏi tiếp theo trong phiên.
 
@@ -30,5 +30,6 @@ Với yêu cầu tạo file, app gọi OpenAI bằng prompt chuyên biệt theo 
 
 ## Lệnh quan trọng
 
-- Rebuild vectors: `python src/ingest.py`
-- Run app: `python3 -m streamlit run src/app.py`
+- Chạy bằng Docker: `docker compose up -d --build`
+- Rebuild vectors: `docker compose exec app python src/ingest.py`
+- Run app không Docker: `python3 -m streamlit run src/app.py` (cần Qdrant đang chạy ở `QDRANT_URL`)

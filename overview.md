@@ -1,5 +1,15 @@
 # Build RAG Local + AI Agent: MacBook 2014 + Steam Deck + GitHub Copilot
 
+> **Ghi chú (11/2026):** Tài liệu này là bản kế hoạch gốc, giữ lại để tham
+> khảo lịch sử. Stack hiện tại đã thay đổi: **ChromaDB → Qdrant** (chạy
+> trong Docker, collection `home_knowledge`), cài đặt bằng
+> **Docker Compose** (`docker compose up -d --build`), có thêm trang
+> **Quản lý Knowledge** trong UI. Tài liệu đúng với code hiện tại là
+> `README.md`, `HUONG-DAN-CAI-DAT.md`,
+> `HUONG-DAN-SU-DUNG-VA-TRAINING.md` và `knowledge/architect/system-architecture.md`.
+> Các đoạn dưới đây còn nhắc ChromaDB / llama-index là nội dung cũ, không
+> còn áp dụng.
+
 **Mục tiêu:** Tạo RAG assistant chạy local trên Steam Deck, remote/code từ MacBook, dùng GitHub Copilot để hỗ trợ code. Dùng để tự động hóa việc cá nhân như:
 
 - Hỏi đáp tài liệu học tập

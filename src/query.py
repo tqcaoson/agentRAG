@@ -6,27 +6,37 @@ from collections import Counter
 from pathlib import Path
 
 from dotenv import load_dotenv
-from openai import OpenAI
-
 sys.path.insert(0, os.path.dirname(__file__))
 
 try:
-    from .ingest import CHROMA_COLLECTION, CHROMA_PATH, build_index, embed_texts, get_collection
+    from .ingest import build_index, embed_texts
+    from .model_provider import get_client, get_model, get_provider
+    from .qdrant_store import (
+        QDRANT_COLLECTION,
+        QDRANT_URL,
+        count_points,
+        search_similar,
+    )
 except ImportError:  # pragma: no cover - fallback for direct script execution
-    from ingest import CHROMA_COLLECTION, CHROMA_PATH, build_index, embed_texts, get_collection
+    from ingest import build_index, embed_texts
+    from model_provider import get_client, get_model, get_provider
+    from qdrant_store import (
+        QDRANT_COLLECTION,
+        QDRANT_URL,
+        count_points,
+        search_similar,
+    )
 
 load_dotenv()
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-DEFAULT_CHAT_MODEL = os.getenv("OPENAI_CHAT_MODEL", "gpt-4o-mini")
 DEFAULT_TOP_K = int(os.getenv("RAG_TOP_K", "5"))
 DEFAULT_CANDIDATE_K = int(os.getenv("RAG_CANDIDATE_K", "20"))
 DEFAULT_MMR_LAMBDA = float(os.getenv("RAG_MMR_LAMBDA", "0.75"))
 
 
 def ensure_index_ready():
-    collection = get_collection()
-    if collection.count() == 0:
+    if count_points() == 0:
         build_index(force=True)
 
 
@@ -102,36 +112,30 @@ def retrieve_context(
     mmr_lambda: float = DEFAULT_MMR_LAMBDA,
 ):
     ensure_index_ready()
-    collection = get_collection()
     query_embedding = embed_texts([query])[0]
-    available = collection.count()
+    available = count_points()
     candidate_count = min(available, max(top_k, candidate_k))
     if candidate_count == 0:
         return []
-    result = collection.query(
-        query_embeddings=[query_embedding],
-        n_results=candidate_count,
-        include=["documents", "metadatas", "distances"],
-    )
+    # Qdrant trả cosine similarity (cao = giống). Chroma trước đây trả
+    # distance (thấp = giống) nên phải đảo chiều; với Qdrant thì không.
+    hits = search_similar(query_embedding, limit=candidate_count)
 
-    documents = result.get("documents", [[]])[0]
-    metadatas = result.get("metadatas", [[]])[0]
-    distances = result.get("distances", [[]])[0]
-
+    documents = [hit["content"] for hit in hits]
     lexical_scores = _lexical_scores(query, documents)
-    semantic_scores = _normalize(distances, reverse=True)
+    semantic_scores = _normalize([hit["score"] for hit in hits])
     normalized_lexical = _normalize(lexical_scores)
 
     contexts = []
-    for document, metadata, distance, semantic, lexical in zip(
-        documents, metadatas, distances, semantic_scores, normalized_lexical
-    ):
+    for hit, semantic, lexical in zip(hits, semantic_scores, normalized_lexical):
         contexts.append(
             {
-                "source": metadata.get("source", "unknown"),
-                "chunk_index": metadata.get("chunk_index", "0"),
-                "content": document,
-                "distance": distance,
+                "source": hit["source"],
+                "chunk_index": str(hit["chunk_index"]),
+                "content": hit["content"],
+                # Giữ key "distance" cho tương thích code cũ:
+                # distance = 1 - cosine similarity.
+                "distance": 1.0 - hit["score"],
                 "semantic_score": semantic,
                 "lexical_score": lexical,
                 "relevance_score": 0.7 * semantic + 0.3 * lexical,
@@ -176,13 +180,10 @@ def generate_text(
     conversation_history=None,
     response_format: dict | None = None,
 ) -> str:
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key or api_key == "your_openai_api_key_here":
-        raise RuntimeError("OPENAI_API_KEY is missing. Set it in .env before asking the assistant.")
-
-    client = OpenAI(api_key=api_key)
+    provider = get_provider("chat")
+    client = get_client(provider)
     request = {
-        "model": DEFAULT_CHAT_MODEL,
+        "model": get_model("chat", provider),
         "temperature": temperature,
         "messages": [
             {"role": "system", "content": system_prompt},
@@ -202,7 +203,8 @@ def answer_query(
     top_k: int = DEFAULT_TOP_K,
     conversation_history=None,
 ):
-    contexts = retrieve_context(query, top_k=top_k)
+    rag_enabled = os.getenv("RAG_ENABLED", "true").strip().lower() in {"1", "true", "yes", "on"}
+    contexts = retrieve_context(query, top_k=top_k) if rag_enabled else []
     context_text = format_context(contexts)
 
     system_message = system_prompt or (
@@ -213,12 +215,14 @@ def answer_query(
 
     if context_text:
         user_message = f"Context:\n{context_text}\n\nQuestion:\n{query}"
-    else:
+    elif rag_enabled:
         user_message = (
             "No relevant context was retrieved from the knowledge base. "
             "Answer the question using your own knowledge, and if useful mention that the answer is not grounded in local documents.\n\n"
             f"Question:\n{query}"
         )
+    else:
+        user_message = query
 
     return generate_text(
         user_message,
@@ -230,7 +234,7 @@ def answer_query(
 
 if __name__ == "__main__":
     result = build_index(force=False)
-    print(f"Local vector index ready at {CHROMA_PATH} in collection {CHROMA_COLLECTION}.")
+    print(f"Vector index ready in Qdrant collection {QDRANT_COLLECTION} at {QDRANT_URL}.")
     print(f"Indexed chunks: {result.get('chunks', 'unknown')}")
     print("Type 'exit' to quit.")
     while True:
