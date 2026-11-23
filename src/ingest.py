@@ -21,6 +21,7 @@ try:
         delete_by_source,
         delete_collection,
         ensure_collection,
+        get_collection_info,
         get_qdrant_client,
         point_id_for,
         upsert_chunks,
@@ -39,6 +40,7 @@ except ImportError:  # pragma: no cover - fallback for direct script execution
         delete_by_source,
         delete_collection,
         ensure_collection,
+        get_collection_info,
         get_qdrant_client,
         point_id_for,
         upsert_chunks,
@@ -274,6 +276,35 @@ def index_is_empty() -> bool:
         return True
 
 
+def index_matches_embedding_model() -> bool:
+    """True khi collection đã có và vector size khớp embedding model hiện tại.
+
+    Dùng 1 lần embed thử ("ping") để biết kích thước vector của model
+    đang cấu hình, vì mỗi model có kích thước khác nhau (OpenAI
+    text-embedding-3-small = 1536, Ollama nomic-embed-text = 768).
+    Nếu không gọi được provider lúc này thì coi như khớp, để app vẫn
+    khởi động được; chat sẽ báo lỗi kết nối rõ ràng sau.
+    """
+    info = get_collection_info()
+    if info is None:
+        return False
+    try:
+        probe_dim = len(embed_texts(["ping"])[0])
+    except Exception:
+        return True
+    return info["vector_size"] == probe_dim
+
+
+def should_skip_ingest(if_empty: bool) -> bool:
+    """True khi --if-empty bật và index hiện tại còn dùng được: đã có
+    dữ liệu VÀ đúng kích thước vector của embedding model hiện tại.
+    Nếu user đổi embedding model (vd OpenAI -> Ollama) thì index cũ
+    không tương thích, phải train lại thay vì bỏ qua."""
+    if not if_empty or index_is_empty():
+        return False
+    return index_matches_embedding_model()
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Index knowledge files into Qdrant.")
     parser.add_argument(
@@ -288,8 +319,10 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    if args.if_empty and not index_is_empty():
+    if should_skip_ingest(args.if_empty):
         print(f"Qdrant collection '{QDRANT_COLLECTION}' đã có dữ liệu, bỏ qua ingest.")
     else:
+        if args.if_empty and not index_is_empty():
+            print("Kích thước vector đã đổi (đổi embedding model), train lại knowledge...")
         result = build_index(force=not args.no_force)
         print(f"Indexed {result['chunks']} chunks into {result['collection']} at {result['url']}")

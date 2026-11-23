@@ -21,6 +21,7 @@ try:
         QDRANT_COLLECTION,
         QDRANT_URL,
         count_points,
+        get_collection_info,
         search_similar,
     )
 except ImportError:  # pragma: no cover - fallback for direct script execution
@@ -35,6 +36,7 @@ except ImportError:  # pragma: no cover - fallback for direct script execution
         QDRANT_COLLECTION,
         QDRANT_URL,
         count_points,
+        get_collection_info,
         search_similar,
     )
 
@@ -124,6 +126,17 @@ def retrieve_context(
 ):
     ensure_index_ready()
     query_embedding = embed_texts([query])[0]
+    # Nếu embedding model đã đổi (vd OpenAI 1536 chiều -> Ollama
+    # nomic-embed-text 768 chiều), collection cũ không tương thích và
+    # Qdrant sẽ báo 400 "Vector dimension error". Train lại toàn bộ
+    # thay vì để lỗi đó lọt ra chat.
+    info = get_collection_info()
+    if info is not None and info["vector_size"] != len(query_embedding):
+        print(
+            f"Kích thước vector đã đổi ({info['vector_size']} -> "
+            f"{len(query_embedding)}), train lại knowledge..."
+        )
+        build_index(force=True)
     available = count_points()
     candidate_count = min(available, max(top_k, candidate_k))
     if candidate_count == 0:

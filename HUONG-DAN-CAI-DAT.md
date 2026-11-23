@@ -196,6 +196,17 @@ curl.exe https://api.openai.com/v1/models
 - Nối được rồi thì train lại knowledge:
   `docker compose exec app python src/ingest.py`, rồi hỏi lại trong chat.
 
+### Chat báo `400 ... Vector dimension error: expected dim: 1536, got 768`
+
+Collection Qdrant được train bằng embedding model cũ (vd OpenAI 1536
+chiều), còn model hiện tại tạo vector khác kích thước (vd Ollama
+nomic-embed-text 768 chiều). Bản mới tự phát hiện và train lại khi đổi
+model. Với bản cũ, train lại bằng tay 1 lần:
+
+```bash
+docker compose exec app python src/ingest.py
+```
+
 ### `docker ps` thấy Qdrant báo `(unhealthy)` (bản cũ)
 
 Bản compose cũ đặt healthcheck bằng `curl`, mà image Qdrant không có
