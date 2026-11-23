@@ -1064,8 +1064,15 @@ def render_knowledge_page():
                         st.rerun()
 
             # ----- Xem chunk đã train -----
+            # Streamlit cấm expander lồng trong expander, nên dùng
+            # checkbox để hiện/ẩn danh sách chunk ngay trong expander
+            # của tài liệu thay vì mở thêm 1 expander con.
             if doc["chunks"]:
-                with st.expander(f"Xem {doc['chunks']} chunk đã train"):
+                show_chunks = st.checkbox(
+                    f"Xem {doc['chunks']} chunk đã train",
+                    key=f"showchunks_{index}",
+                )
+                if show_chunks:
                     try:
                         chunks = knowledge.list_chunks(source)
                     except Exception as exc:
